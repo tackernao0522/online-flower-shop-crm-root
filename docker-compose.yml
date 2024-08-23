@@ -1,47 +1,32 @@
-version: "3.8"
-
 services:
-  api:
-    build:
-      context: ./api
-      dockerfile: Dockerfile
+  app:
+    build: ./api/infra/php
     volumes:
-      - ./api:/var/www/html
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
-    environment:
-      - APP_ENV=local
-      - DB_HOST=db
-      - DB_DATABASE=flower_shop
-      - DB_USERNAME=root
-      - DB_PASSWORD=rootpassword
-    command: php artisan serve --host=0.0.0.0 --port=8000
+      - ./api/src:/data
 
-  frontend:
+  web:
+    image: nginx:1.20-alpine
+    ports:
+      - 8080:80
+    volumes:
+      - ./api/src:/data
+      - ./api/infra/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    working_dir: /data
+
+  db:
+    build: ./api/infra/mysql
+    volumes:
+      - db-store:/var/lib/mysql
+
+  front:
     build:
       context: ./front
       dockerfile: Dockerfile
     volumes:
       - ./front:/app
-      - /app/node_modules
     ports:
       - "3000:3000"
-    environment:
-      - NODE_ENV=development
-    command: npm run dev
-
-  db:
-    image: mysql:8.0
-    environment:
-      MYSQL_DATABASE: flower_shop
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_PASSWORD: rootpassword
-    volumes:
-      - dbdata:/var/lib/mysql
-    ports:
-      - "3306:3306"
+    command: sh -c "npm install && npm run dev"
 
 volumes:
-  dbdata:
+  db-store:
