@@ -3,12 +3,18 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: circleci/php:8.1-cli
+      - image: circleci/php:8.1-fpm-buster
         auth:
           username: mydockerhub-user
           password: $DOCKERHUB_PASSWORD
-      - image: circleci/node:16
-      - image: circleci/mysql:5.7
+      - image: mysql/mysql-server:8.0
+        environment:
+          MYSQL_DATABASE: laravel
+          MYSQL_USER: phper
+          MYSQL_PASSWORD: secret
+          MYSQL_ROOT_PASSWORD: secret
+          TZ: Asia/Tokyo
+      - image: node:18-alpine
 
     working_directory: ~/project
 
@@ -20,9 +26,14 @@ jobs:
           name: Install PHP dependencies
           working_directory: ./api
           command: |
-            sudo apt-get update
-            sudo apt-get install -y libpng-dev
-            sudo docker-php-ext-install gd
+            apt-get update && \
+            apt-get -y install --no-install-recommends git unzip libzip-dev libicu-dev libonig-dev sqlite3 libsqlite3-dev && \
+            curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+            pecl install xdebug && docker-php-ext-enable xdebug && \
+            apt-get install -y nodejs && \
+            apt-get clean && \
+            rm -rf /var/lib/apt/lists/* && \
+            docker-php-ext-install intl pdo_mysql zip bcmath pdo_sqlite && \
             composer install --prefer-dist --no-interaction
 
       # Set up database
