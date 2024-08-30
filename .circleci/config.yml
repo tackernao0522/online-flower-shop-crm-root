@@ -52,6 +52,7 @@ jobs:
             sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
             sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env
             php artisan key:generate
+            php artisan jwt:secret
 
       - run:
           name: Wait for DB
