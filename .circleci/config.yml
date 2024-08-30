@@ -1,9 +1,12 @@
 version: 2.1
 
+orbs:
+  node: circleci/node@5.0.2
+
 jobs:
   build:
     docker:
-      - image: cimg/php:8.1
+      - image: cimg/php:8.1-node
       - image: mysql:8.0
         environment:
           MYSQL_DATABASE: laravel
@@ -11,7 +14,6 @@ jobs:
           MYSQL_PASSWORD: secret
           MYSQL_ROOT_PASSWORD: secret
           TZ: Asia/Tokyo
-      - image: cimg/node:18.0
 
     working_directory: ~/project
 
@@ -71,7 +73,9 @@ jobs:
             cd ~/project/api/src
             php artisan test
 
-      # Node.js dependencies and tests (フロントエンド用)
+      - node/install:
+          node-version: "18.0"
+
       - restore_cache:
           keys:
             - node-v1-{{ checksum "~/project/front/package-lock.json" }}
