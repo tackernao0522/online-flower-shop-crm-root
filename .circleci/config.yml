@@ -91,10 +91,10 @@ jobs:
           paths:
             - ~/project/front/node_modules
 
-      # - run:
-      #     name: Run frontend tests
-      #     working_directory: ~/project/front
-      #     command: npm test
+      - run:
+          name: Run frontend tests
+          working_directory: ~/project/front
+          command: npm test
 
 workflows:
   version: 2
