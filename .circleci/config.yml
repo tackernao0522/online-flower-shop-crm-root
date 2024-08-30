@@ -74,7 +74,7 @@ jobs:
             php artisan test
 
       - node/install:
-          node-version: "18.0"
+          node-version: "18.17.0"
 
       - restore_cache:
           keys:
