@@ -18,6 +18,12 @@ jobs:
     steps:
       - checkout
 
+      - run:
+        name: "Checkout Submodules"
+        command: |
+          git submodule sync
+          git submodule update --init --recursive
+
       # PHP dependencies and setup
       - run:
           name: Install PHP dependencies and setup
