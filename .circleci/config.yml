@@ -17,6 +17,7 @@ jobs:
 
     steps:
       - checkout
+
       - add_ssh_keys:
           fingerprints:
             - "SHA256:Hv3ZDR/zkkmfsWsjW7ZuloEX+nvO5CdfeKJMpCwyNac"
@@ -27,42 +28,76 @@ jobs:
             git submodule sync
             git submodule update --init --recursive
 
-      # PHP dependencies and setup
+      - restore_cache:
+          keys:
+            - composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
+            - composer-v1-
+
       - run:
-          name: Install PHP dependencies and setup
-          working_directory: ~/project/api/src
+          name: Install PHP extensions
           command: |
             sudo apt-get update
-            sudo apt-get -y install --no-install-recommends git unzip libzip-dev libicu-dev libonig-dev sqlite3 libsqlite3-dev
-            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash -
-            sudo pecl install xdebug && sudo docker-php-ext-enable xdebug
-            sudo apt-get clean
-            sudo rm -rf /var/lib/apt/lists/*
-            sudo docker-php-ext-install intl pdo_mysql zip bcmath pdo_sqlite
-            composer install --prefer-dist --no-interaction
+            sudo apt-get install -y libzip-dev
+            sudo docker-php-ext-install zip pdo_mysql
 
-      # Set up database
       - run:
-          name: Set up Database
-          working_directory: ~/project/api/src
+          name: Create .env file
           command: |
+            cd ~/project/api/src
             cp .env.example .env
+            sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
+            sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env
             php artisan key:generate
+
+      - run:
+          name: Install PHP dependencies
+          command: |
+            cd ~/project/api/src
+            composer install --no-interaction --prefer-dist
+
+      - save_cache:
+          key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
+          paths:
+            - ./vendor
+
+      - run:
+          name: Wait for DB
+          command: |
+            cd ~/project/api/src
+            dockerize -wait tcp://localhost:3306 -timeout 1m
+
+      - run:
+          name: Run database migrations
+          command: |
+            cd ~/project/api/src
             php artisan migrate --force
 
-      # Run Laravel tests
       - run:
-          name: Run API Tests
-          working_directory: ~/project/api/src
-          command: php artisan test
-
-      # Node.js dependencies and tests
-      - run:
-          name: Install Node.js dependencies and run tests
-          working_directory: ~/project/front
+          name: Run Laravel tests
           command: |
-            npm install
-            npm run test
+            cd ~/project/api/src
+            php artisan test
+
+      # Node.js dependencies and tests (フロントエンド用)
+      - restore_cache:
+          keys:
+            - node-v1-{{ checksum "~/project/front/package-lock.json" }}
+            - node-v1-
+
+      - run:
+          name: Install Node.js dependencies
+          working_directory: ~/project/front
+          command: npm install
+
+      - save_cache:
+          key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
+          paths:
+            - ~/project/front/node_modules
+
+      - run:
+          name: Run frontend tests
+          working_directory: ~/project/front
+          command: npm test
 
 workflows:
   version: 2
