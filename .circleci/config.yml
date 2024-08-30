@@ -62,10 +62,10 @@ jobs:
             dockerize -wait tcp://localhost:3306 -timeout 1m
 
       - run:
-          name: Run database migrations
+          name: Run database migrations and seed
           command: |
             cd ~/project/api/src
-            php artisan migrate --force
+            php artisan migrate --force --seed
 
       - run:
           name: Run Laravel tests
