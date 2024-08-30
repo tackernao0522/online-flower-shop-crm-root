@@ -17,6 +17,9 @@ jobs:
 
     steps:
       - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:Hv3ZDR/zkkmfsWsjW7ZuloEX+nvO5CdfeKJMpCwyNac"
 
       - run:
           name: Checkout Submodules
