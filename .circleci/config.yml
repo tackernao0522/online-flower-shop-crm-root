@@ -18,24 +18,24 @@ jobs:
     steps:
       - checkout
 
-      # PHP dependencies
+      # PHP dependencies and setup
       - run:
-          name: Install PHP dependencies
-          working_directory: ./api
+          name: Install PHP dependencies and setup
+          working_directory: ~/project/api/src
           command: |
-            sudo apt-get update && \
-            sudo apt-get -y install --no-install-recommends git unzip libzip-dev libicu-dev libonig-dev sqlite3 libsqlite3-dev && \
-            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash - && \
-            sudo pecl install xdebug && sudo docker-php-ext-enable xdebug && \
-            sudo apt-get clean && \
-            sudo rm -rf /var/lib/apt/lists/* && \
-            sudo docker-php-ext-install intl pdo_mysql zip bcmath pdo_sqlite && \
+            sudo apt-get update
+            sudo apt-get -y install --no-install-recommends git unzip libzip-dev libicu-dev libonig-dev sqlite3 libsqlite3-dev
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash -
+            sudo pecl install xdebug && sudo docker-php-ext-enable xdebug
+            sudo apt-get clean
+            sudo rm -rf /var/lib/apt/lists/*
+            sudo docker-php-ext-install intl pdo_mysql zip bcmath pdo_sqlite
             composer install --prefer-dist --no-interaction
 
       # Set up database
       - run:
           name: Set up Database
-          working_directory: ./api
+          working_directory: ~/project/api/src
           command: |
             cp .env.example .env
             php artisan key:generate
@@ -44,20 +44,16 @@ jobs:
       # Run Laravel tests
       - run:
           name: Run API Tests
-          working_directory: ./api
+          working_directory: ~/project/api/src
           command: php artisan test
 
-      # Node.js dependencies
+      # Node.js dependencies and tests
       - run:
-          name: Install Node.js dependencies
-          working_directory: ./front
-          command: npm install
-
-      # Run Next.js tests
-      - run:
-          name: Run Frontend Tests
-          working_directory: ./front
-          command: npm run test
+          name: Install Node.js dependencies and run tests
+          working_directory: ~/project/front
+          command: |
+            npm install
+            npm run test
 
 workflows:
   version: 2
