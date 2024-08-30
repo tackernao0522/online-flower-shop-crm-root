@@ -3,6 +3,8 @@ services:
     build: ./api/infra/php
     volumes:
       - ./api/src:/data
+    depends_on:
+      - db
 
   web:
     image: nginx:1.20-alpine

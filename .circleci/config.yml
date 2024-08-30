@@ -1,0 +1,103 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.0.2
+
+jobs:
+  build:
+    docker:
+      - image: cimg/php:8.1-node
+      - image: mysql:8.0
+        environment:
+          MYSQL_DATABASE: laravel
+          MYSQL_USER: phper
+          MYSQL_PASSWORD: secret
+          MYSQL_ROOT_PASSWORD: secret
+          TZ: Asia/Tokyo
+
+    working_directory: ~/project
+
+    steps:
+      - checkout
+
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:Hv3ZDR/zkkmfsWsjW7ZuloEX+nvO5CdfeKJMpCwyNac"
+
+      - run:
+          name: Checkout Submodules
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
+
+      - restore_cache:
+          keys:
+            - composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
+            - composer-v1-
+
+      - run:
+          name: Install Composer Dependencies
+          command: |
+            cd ~/project/api/src
+            composer install --no-interaction --prefer-dist
+
+      - save_cache:
+          key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
+          paths:
+            - ~/project/api/src/vendor
+
+      - run:
+          name: Create .env file
+          command: |
+            cd ~/project/api/src
+            cp .env.example .env
+            sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
+            sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env
+            php artisan key:generate
+            php artisan jwt:secret
+
+      - run:
+          name: Wait for DB
+          command: |
+            dockerize -wait tcp://localhost:3306 -timeout 1m
+
+      - run:
+          name: Run database migrations
+          command: |
+            cd ~/project/api/src
+            php artisan migrate --force
+
+      - run:
+          name: Run Laravel tests
+          command: |
+            cd ~/project/api/src
+            php artisan test
+
+      - node/install:
+          node-version: "18.17.0"
+
+      - restore_cache:
+          keys:
+            - node-v1-{{ checksum "~/project/front/package-lock.json" }}
+            - node-v1-
+
+      - run:
+          name: Install Node.js dependencies
+          working_directory: ~/project/front
+          command: npm install
+
+      - save_cache:
+          key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
+          paths:
+            - ~/project/front/node_modules
+
+      - run:
+          name: Run frontend tests
+          working_directory: ~/project/front
+          command: npm test
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build
