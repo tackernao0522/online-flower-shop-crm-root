@@ -34,11 +34,15 @@ jobs:
             - composer-v1-
 
       - run:
-          name: Install PHP extensions
+          name: Install Composer Dependencies
           command: |
-            sudo apt-get update
-            sudo apt-get install -y libzip-dev
-            sudo docker-php-ext-install zip pdo_mysql
+            cd ~/project/api/src
+            composer install --no-interaction --prefer-dist
+
+      - save_cache:
+          key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
+          paths:
+            - ~/project/api/src/vendor
 
       - run:
           name: Create .env file
@@ -50,20 +54,8 @@ jobs:
             php artisan key:generate
 
       - run:
-          name: Install PHP dependencies
-          command: |
-            cd ~/project/api/src
-            composer install --no-interaction --prefer-dist
-
-      - save_cache:
-          key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
-          paths:
-            - ./vendor
-
-      - run:
           name: Wait for DB
           command: |
-            cd ~/project/api/src
             dockerize -wait tcp://localhost:3306 -timeout 1m
 
       - run:
