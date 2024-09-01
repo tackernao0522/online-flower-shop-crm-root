@@ -21,6 +21,13 @@ jobs:
       - checkout
 
       - run:
+          name: Configure Git for private repositories
+          command: |
+            echo -e "machine github.com\n  login $GITHUB_USER\n  password $GITHUB_TOKEN" > ~/.netrc
+            chmod 600 ~/.netrc
+            git config --global url."https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
+
+      - run:
           name: Debug environment variables
           command: |
             echo "SSH Fingerprint ROOT: ${CI_SSH_FINGERPRINT_ROOT}"
@@ -54,15 +61,10 @@ jobs:
             chmod 600 ~/.ssh/config
 
       - run:
-          name: Setup Git for Submodules
-          command: |
-            git config --global url."https://github.com/".insteadOf git@github.com:
-
-      - run:
           name: Checkout Submodules
           command: |
             git submodule sync
-            git submodule update --init --recursive
+            git submodule update --init --recursive --depth 1
 
       - restore_cache:
           keys:
