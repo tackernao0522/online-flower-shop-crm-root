@@ -42,7 +42,7 @@ jobs:
           name: Install Required Packages
           command: |
             sudo apt-get update
-            sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring curl
+            sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom curl
 
       - run:
           name: Install Composer
