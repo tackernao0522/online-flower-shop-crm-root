@@ -13,13 +13,14 @@ jobs:
           MYSQL_USER: ${CI_MYSQL_USER}
           MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}
           MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}
+          MYSQL_HOST: 127.0.0.1
           TZ: ${CI_TZ}
 
     working_directory: ~/project
 
     steps:
       - checkout:
-          submodules: false # サブモジュールは手動で初期化するので、ここでは無効にします
+          submodules: false
 
       - add_ssh_keys:
           fingerprints:
@@ -69,14 +70,22 @@ jobs:
             cd ~/project/api/src
             cp .env.example .env
             sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
-            sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=${CI_DB_PASSWORD}/" .env
+            sed -i "s/DB_DATABASE=.*/DB_DATABASE=${CI_MYSQL_DATABASE}/" .env
+            sed -i "s/DB_USERNAME=.*/DB_USERNAME=${CI_MYSQL_USER}/" .env
+            sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=${CI_MYSQL_PASSWORD}/" .env
             php artisan key:generate
             php artisan jwt:secret
 
       - run:
           name: Wait for DB
           command: |
-            dockerize -wait tcp://localhost:3306 -timeout 1m
+            dockerize -wait tcp://127.0.0.1:3306 -timeout 2m
+
+      - run:
+          name: Debug Database Connection
+          command: |
+            cd ~/project/api/src
+            php artisan db:show
 
       - run:
           name: Run database migrations and seed
