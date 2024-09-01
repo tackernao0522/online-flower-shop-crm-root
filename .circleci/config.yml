@@ -13,7 +13,6 @@ jobs:
           MYSQL_USER: ${CI_MYSQL_USER}
           MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}
           MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}
-          MYSQL_ROOT_HOST: "%"
         command:
           [
             "--default-authentication-plugin=mysql_native_password",
@@ -60,6 +59,14 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y mysql-client
 
+      - run:
+          name: Debug Environment Variables
+          command: |
+            echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
+            echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
+            echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
+            echo "CI_MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}"
+
       - restore_cache:
           keys:
             - composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
@@ -78,16 +85,25 @@ jobs:
             - ~/project/api/src/vendor
 
       - run:
-          name: Create .env file
+          name: Create and Debug .env file
           command: |
             cd ~/project/api/src
             cp .env.example .env
-            sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
-            sed -i "s/DB_DATABASE=.*/${CI_MYSQL_DATABASE}/" .env
-            sed -i "s/DB_USERNAME=.*/${CI_MYSQL_USER}/" .env
-            sed -i "s/DB_PASSWORD=.*/${CI_MYSQL_PASSWORD}/" .env
+            sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
+            sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
+            sed -i "s#DB_USERNAME=.*#DB_USERNAME=${CI_MYSQL_USER}#" .env
+            sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${CI_MYSQL_PASSWORD}#" .env
             php artisan key:generate
             php artisan jwt:secret
+            echo "Contents of .env file:"
+            cat .env
+
+      - run:
+          name: Clear Config Cache
+          command: |
+            cd ~/project/api/src
+            php artisan config:clear
+            php artisan cache:clear
 
       - run:
           name: Wait for MySQL
@@ -103,9 +119,9 @@ jobs:
             echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
             echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
             echo "MySQL Version:"
-            mysql -h127.0.0.1 -u${CI_MYSQL_USER} -p${CI_MYSQL_PASSWORD} -e "SELECT VERSION();" || echo "Failed to connect with user"
+            mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
             echo "MySQL Users:"
-            mysql -h127.0.0.1 -uroot -p${CI_MYSQL_ROOT_PASSWORD} -e "SELECT user, host FROM mysql.user;" || echo "Failed to connect as root"
+            mysql -h127.0.0.1 -uroot -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;" || echo "Failed to connect as root"
             echo "Database connection details:"
             php artisan tinker --execute="print_r(config('database.connections.mysql'));"
             echo "Attempting connection:"
