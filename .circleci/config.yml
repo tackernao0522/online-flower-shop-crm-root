@@ -20,9 +20,27 @@ jobs:
     steps:
       - checkout
 
+      - run:
+          name: Debug environment variables
+          command: |
+            echo "SSH Fingerprint: ${CI_SSH_FINGERPRINT}"
+            echo "MySQL Database: ${CI_MYSQL_DATABASE}"
+            echo "MySQL User: ${CI_MYSQL_USER}"
+            echo "MySQL Password: ${CI_MYSQL_PASSWORD}"
+            echo "MySQL Root Password: ${CI_MYSQL_ROOT_PASSWORD}"
+            echo "TZ: ${CI_TZ}"
+            echo "DB Password: ${CI_DB_PASSWORD}"
+
       - add_ssh_keys:
           fingerprints:
             - ${CI_SSH_FINGERPRINT}
+
+      - run:
+          name: Setup Git for SSH
+          command: |
+            mkdir -p ~/.ssh
+            echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+            git config --global url."git@github.com:".insteadOf "https://github.com/"
 
       - run:
           name: Checkout Submodules
