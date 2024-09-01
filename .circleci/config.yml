@@ -23,7 +23,7 @@ jobs:
       - run:
           name: Configure Git for private repositories
           command: |
-            echo -e "machine github.com\n  login $GITHUB_USER\n  password $GITHUB_TOKEN" > ~/.netrc
+            echo -e "machine github.com\n  login ${GITHUB_USER}\n  password ${GITHUB_TOKEN}" > ~/.netrc
             chmod 600 ~/.netrc
             git config --global url."https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
 
@@ -88,7 +88,7 @@ jobs:
             cd ~/project/api/src
             cp .env.example .env
             sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
-            sed -i 's/DB_PASSWORD=.*/${CI_DB_PASSWORD}/' .env
+            sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=${CI_DB_PASSWORD}/" .env
             php artisan key:generate
             php artisan jwt:secret
 
