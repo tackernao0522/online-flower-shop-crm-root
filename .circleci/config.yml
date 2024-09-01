@@ -23,7 +23,9 @@ jobs:
       - run:
           name: Debug environment variables
           command: |
-            echo "SSH Fingerprint: ${CI_SSH_FINGERPRINT}"
+            echo "SSH Fingerprint ROOT: ${CI_SSH_FINGERPRINT_ROOT}"
+            echo "SSH Fingerprint API: ${CI_SSH_FINGERPRINT_API}"
+            echo "SSH Fingerprint FRONT: ${CI_SSH_FINGERPRINT_FRONT}"
             echo "MySQL Database: ${CI_MYSQL_DATABASE}"
             echo "MySQL User: ${CI_MYSQL_USER}"
             echo "MySQL Password: ${CI_MYSQL_PASSWORD}"
@@ -36,6 +38,12 @@ jobs:
             - "${CI_SSH_FINGERPRINT_ROOT}"
             - "${CI_SSH_FINGERPRINT_API}"
             - "${CI_SSH_FINGERPRINT_FRONT}"
+
+      - run:
+          name: Debug SSH keys
+          command: |
+            ssh-add -l
+            ls -la ~/.ssh
 
       - run:
           name: Setup Git for SSH
