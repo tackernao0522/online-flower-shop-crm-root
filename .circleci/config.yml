@@ -44,6 +44,7 @@ jobs:
           command: |
             ssh-add -l
             ls -la ~/.ssh
+            ssh -Tv git@github.com
 
       - run:
           name: Setup Git for SSH
@@ -51,6 +52,7 @@ jobs:
             mkdir -p ~/.ssh
             echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
             git config --global url."git@github.com:".insteadOf "https://github.com/"
+            chmod 600 ~/.ssh/config
 
       - run:
           name: Checkout Submodules
