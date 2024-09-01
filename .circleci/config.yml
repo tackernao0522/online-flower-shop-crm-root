@@ -16,9 +16,10 @@ jobs:
           MYSQL_ROOT_HOST: "%"
         command:
           [
-            --default-authentication-plugin=mysql_native_password,
-            --character-set-server=utf8mb4,
-            --collation-server=utf8mb4_ja_0900_as_cs_ks,
+            "--default-authentication-plugin=mysql_native_password",
+            "--character-set-server=utf8mb4",
+            "--collation-server=utf8mb4_unicode_ci",
+            "--bind-address=0.0.0.0",
           ]
 
     working_directory: ~/project
@@ -91,7 +92,7 @@ jobs:
       - run:
           name: Wait for MySQL
           command: |
-            dockerize -wait tcp://localhost:3306 -timeout 1m
+            dockerize -wait tcp://127.0.0.1:3306 -timeout 2m
 
       - run:
           name: Debug Database Connection
@@ -102,9 +103,9 @@ jobs:
             echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
             echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
             echo "MySQL Version:"
-            sudo mysql -h127.0.0.1 -u${CI_MYSQL_USER} -p${CI_MYSQL_PASSWORD} -e "SELECT VERSION();"
+            mysql -h127.0.0.1 -u${CI_MYSQL_USER} -p${CI_MYSQL_PASSWORD} -e "SELECT VERSION();" || echo "Failed to connect with user"
             echo "MySQL Users:"
-            sudo mysql -h127.0.0.1 -uroot -p${CI_MYSQL_ROOT_PASSWORD} -e "SELECT user, host FROM mysql.user;"
+            mysql -h127.0.0.1 -uroot -p${CI_MYSQL_ROOT_PASSWORD} -e "SELECT user, host FROM mysql.user;" || echo "Failed to connect as root"
             echo "Database connection details:"
             php artisan tinker --execute="print_r(config('database.connections.mysql'));"
             echo "Attempting connection:"
