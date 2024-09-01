@@ -56,19 +56,19 @@ jobs:
           name: Configure MySQL
           command: |
             sudo systemctl start mysql
-            sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
-            sudo mysql -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
-            sudo mysql -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';"
-            sudo mysql -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
-            sudo mysql -e "FLUSH PRIVILEGES;"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
 
       - run:
           name: Check MySQL Service
           command: |
             sudo systemctl status mysql --no-pager
             mysql --version
-            sudo mysql -u root -p${CI_MYSQL_ROOT_PASSWORD} -e "SHOW DATABASES;"
-            sudo mysql -u ${CI_MYSQL_USER} -p${CI_MYSQL_PASSWORD} -e "SHOW DATABASES;"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
+            sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
           no_output_timeout: 1m
 
       - run:
