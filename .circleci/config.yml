@@ -7,13 +7,13 @@ jobs:
   build:
     docker:
       - image: cimg/php:8.1-node
-      - image: mysql/mysql-server:8.0
+      - image: mysql:8.0
         environment:
           MYSQL_DATABASE: ${CI_MYSQL_DATABASE}
           MYSQL_USER: ${CI_MYSQL_USER}
           MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}
           MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}
-          TZ: ${CI_TZ}
+          MYSQL_ROOT_HOST: "%"
         command:
           [
             --default-authentication-plugin=mysql_native_password,
@@ -89,16 +89,22 @@ jobs:
             php artisan jwt:secret
 
       - run:
-          name: Wait for DB
+          name: Wait for MySQL
           command: |
-            dockerize -wait tcp://127.0.0.1:3306 -timeout 2m
+            dockerize -wait tcp://localhost:3306 -timeout 1m
 
       - run:
           name: Debug Database Connection
           command: |
             cd ~/project/api/src
+            echo "Environment variables:"
+            echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
+            echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
+            echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
             echo "MySQL Version:"
-            mysql --host=127.0.0.1 --user=${CI_MYSQL_USER} --password=${CI_MYSQL_PASSWORD} -e "SELECT VERSION();"
+            sudo mysql -h127.0.0.1 -u${CI_MYSQL_USER} -p${CI_MYSQL_PASSWORD} -e "SELECT VERSION();"
+            echo "MySQL Users:"
+            sudo mysql -h127.0.0.1 -uroot -p${CI_MYSQL_ROOT_PASSWORD} -e "SELECT user, host FROM mysql.user;"
             echo "Database connection details:"
             php artisan tinker --execute="print_r(config('database.connections.mysql'));"
             echo "Attempting connection:"
