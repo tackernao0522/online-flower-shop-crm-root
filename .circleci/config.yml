@@ -39,10 +39,10 @@ jobs:
             git submodule update --init --recursive --depth 1
 
       - run:
-          name: Install MySQL
+          name: Install Required Packages
           command: |
             sudo apt-get update
-            sudo apt-get install -y mysql-server mysql-client
+            sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring curl
 
       - run:
           name: Install Composer
