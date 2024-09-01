@@ -9,11 +9,11 @@ jobs:
       - image: cimg/php:8.1-node
       - image: mysql:8.0
         environment:
-          MYSQL_DATABASE: ${CI_MYSQL_DATABASE}
-          MYSQL_USER: ${CI_MYSQL_USER}
-          MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}
-          MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}
-          TZ: ${CI_TZ}
+          MYSQL_DATABASE: laravel
+          MYSQL_USER: phper
+          MYSQL_PASSWORD: secret
+          MYSQL_ROOT_PASSWORD: secret
+          TZ: Asia/Tokyo
 
     working_directory: ~/project
 
@@ -22,7 +22,7 @@ jobs:
 
       - add_ssh_keys:
           fingerprints:
-            - ${CI_SSH_FINGERPRINT}
+            - "SHA256:Hv3ZDR/zkkmfsWsjW7ZuloEX+nvO5CdfeKJMpCwyNac"
 
       - run:
           name: Checkout Submodules
@@ -52,7 +52,7 @@ jobs:
             cd ~/project/api/src
             cp .env.example .env
             sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
-            sed -i 's/DB_PASSWORD=.*/${CI_DB_PASSWORD}/' .env
+            sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env
             php artisan key:generate
             php artisan jwt:secret
 
@@ -100,5 +100,4 @@ workflows:
   version: 2
   build_and_test:
     jobs:
-      - build:
-          context: my-context
+      - build
