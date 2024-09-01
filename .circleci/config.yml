@@ -32,13 +32,8 @@ jobs:
           command: |
             mkdir -p ~/.ssh
             echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
             chmod 600 ~/.ssh/config
-
-      - run:
-          name: Checkout Submodules with SSH
-          command: |
-            git submodule sync
-            git submodule update --init --recursive --depth 1
 
       - run:
           name: Debug SSH keys
@@ -46,6 +41,12 @@ jobs:
             ssh-add -l
             ls -la ~/.ssh
             ssh -Tv git@github.com
+
+      - run:
+          name: Checkout Submodules with SSH
+          command: |
+            git submodule sync
+            git submodule update --init --recursive --depth 1
 
       - restore_cache:
           keys:
