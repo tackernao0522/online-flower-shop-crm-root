@@ -33,7 +33,9 @@ jobs:
 
       - add_ssh_keys:
           fingerprints:
-            - ${CI_SSH_FINGERPRINT}
+            - "${CI_SSH_FINGERPRINT_ROOT}"
+            - "${CI_SSH_FINGERPRINT_API}"
+            - "${CI_SSH_FINGERPRINT_FRONT}"
 
       - run:
           name: Setup Git for SSH
