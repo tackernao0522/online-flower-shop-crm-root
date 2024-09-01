@@ -40,7 +40,6 @@ jobs:
           command: |
             ssh-add -l
             ls -la ~/.ssh
-            ssh -Tv git@github.com
 
       - run:
           name: Checkout Submodules with SSH
