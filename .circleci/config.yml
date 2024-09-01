@@ -18,26 +18,8 @@ jobs:
     working_directory: ~/project
 
     steps:
-      - checkout
-
-      - run:
-          name: Configure Git for private repositories
-          command: |
-            echo -e "machine github.com\n  login ${GITHUB_USER}\n  password ${GITHUB_TOKEN}" > ~/.netrc
-            chmod 600 ~/.netrc
-
-      - run:
-          name: Debug environment variables
-          command: |
-            echo "SSH Fingerprint ROOT: ${CI_SSH_FINGERPRINT_ROOT}"
-            echo "SSH Fingerprint API: ${CI_SSH_FINGERPRINT_API}"
-            echo "SSH Fingerprint FRONT: ${CI_SSH_FINGERPRINT_FRONT}"
-            echo "MySQL Database: ${CI_MYSQL_DATABASE}"
-            echo "MySQL User: ${CI_MYSQL_USER}"
-            echo "MySQL Password: ${CI_MYSQL_PASSWORD}"
-            echo "MySQL Root Password: ${CI_MYSQL_ROOT_PASSWORD}"
-            echo "TZ: ${CI_TZ}"
-            echo "DB Password: ${CI_DB_PASSWORD}"
+      - checkout:
+          submodules: false # サブモジュールは手動で初期化するので、ここでは無効にします
 
       - add_ssh_keys:
           fingerprints:
@@ -46,24 +28,24 @@ jobs:
             - "${CI_SSH_FINGERPRINT_FRONT}"
 
       - run:
-          name: Debug SSH keys
-          command: |
-            ssh-add -l
-            ls -la ~/.ssh
-            ssh -Tv git@github.com
-
-      - run:
-          name: Setup Git for SSH
+          name: Configure SSH for GitHub
           command: |
             mkdir -p ~/.ssh
             echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
             chmod 600 ~/.ssh/config
 
       - run:
-          name: Checkout Submodules
+          name: Checkout Submodules with SSH
           command: |
             git submodule sync
             git submodule update --init --recursive --depth 1
+
+      - run:
+          name: Debug SSH keys
+          command: |
+            ssh-add -l
+            ls -la ~/.ssh
+            ssh -Tv git@github.com
 
       - restore_cache:
           keys:
