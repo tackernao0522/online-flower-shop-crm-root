@@ -42,7 +42,7 @@ jobs:
           name: Install Required Packages
           command: |
             sudo apt-get update
-            sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+            sudo apt-get install -y sqlite3 libsqlite3-dev mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
 
       - run:
           name: Install Composer
@@ -106,10 +106,8 @@ jobs:
           command: |
             cd ~/project/api/src
             cp .env.example .env
-            sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
-            sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
-            sed -i "s#DB_USERNAME=.*#DB_USERNAME=${CI_MYSQL_USER}#" .env
-            sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${CI_MYSQL_PASSWORD}#" .env
+            sed -i "s#DB_CONNECTION=.*#DB_CONNECTION=sqlite#" .env  # SQLiteを使用するよう設定
+            sed -i "s#DB_DATABASE=.*#DB_DATABASE=/tmp/database.sqlite#" .env  # SQLiteのパスを指定
             php artisan key:generate
             php artisan jwt:secret
             echo "Contents of .env file:"
@@ -149,7 +147,7 @@ jobs:
           name: Run Laravel tests
           command: |
             cd ~/project/api/src
-            php artisan test
+            php artisan test --env=testing  # テスト環境を指定して実行
 
       - node/install:
           node-version: "18.17.0"
