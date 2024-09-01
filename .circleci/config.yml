@@ -51,8 +51,12 @@ jobs:
           command: |
             mkdir -p ~/.ssh
             echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-            git config --global url."git@github.com:".insteadOf "https://github.com/"
             chmod 600 ~/.ssh/config
+
+      - run:
+          name: Setup Git for Submodules
+          command: |
+            git config --global url."https://github.com/".insteadOf git@github.com:
 
       - run:
           name: Checkout Submodules
