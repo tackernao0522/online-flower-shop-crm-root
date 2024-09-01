@@ -58,6 +58,7 @@ jobs:
           command: |
             cd ~/project/api/src
             composer install --no-interaction --prefer-dist
+            composer require doctrine/dbal
 
       - save_cache:
           key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
@@ -85,7 +86,7 @@ jobs:
           name: Debug Database Connection
           command: |
             cd ~/project/api/src
-            php artisan db:show
+            php artisan tinker --execute="DB::connection()->getPdo();"
 
       - run:
           name: Run database migrations and seed
