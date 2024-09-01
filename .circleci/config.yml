@@ -25,7 +25,6 @@ jobs:
           command: |
             echo -e "machine github.com\n  login ${GITHUB_USER}\n  password ${GITHUB_TOKEN}" > ~/.netrc
             chmod 600 ~/.netrc
-            git config --global url."https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/".insteadOf "git@github.com:"
 
       - run:
           name: Debug environment variables
