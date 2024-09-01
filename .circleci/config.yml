@@ -39,10 +39,10 @@ jobs:
             git submodule update --init --recursive --depth 1
 
       - run:
-          name: Install MySQL Client
+          name: Install MySQL
           command: |
             sudo apt-get update
-            sudo apt-get install -y mysql-client
+            sudo apt-get install -y mysql-server mysql-client
 
       - run:
           name: Debug Environment Variables
