@@ -13,6 +13,7 @@ jobs:
           MYSQL_USER: ${CI_MYSQL_USER}
           MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}
           MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}
+          MYSQL_ROOT_HOST: "%"
         command:
           [
             "--default-authentication-plugin=mysql_native_password",
@@ -67,6 +68,12 @@ jobs:
             echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
             echo "CI_MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}"
 
+      - run:
+          name: Check MySQL Container
+          command: |
+            docker ps
+            docker logs $(docker ps -q --filter name=mysql)
+
       - restore_cache:
           keys:
             - composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
@@ -108,7 +115,17 @@ jobs:
       - run:
           name: Wait for MySQL
           command: |
-            dockerize -wait tcp://127.0.0.1:3306 -timeout 2m
+            dockerize -wait tcp://localhost:3306 -timeout 3m
+
+      - run:
+          name: Additional Database Debug
+          command: |
+            echo "MySQL processes:"
+            ps aux | grep mysql
+            echo "Listening ports:"
+            netstat -tuln
+            echo "Testing connection:"
+            nc -zv 127.0.0.1 3306
 
       - run:
           name: Debug Database Connection
