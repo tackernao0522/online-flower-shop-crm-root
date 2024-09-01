@@ -7,14 +7,19 @@ jobs:
   build:
     docker:
       - image: cimg/php:8.1-node
-      - image: mysql:8.0
+      - image: mysql/mysql-server:8.0
         environment:
-          MYSQL_DATABASE: ${CI_MYSQL_DATABASE}
-          MYSQL_USER: ${CI_MYSQL_USER}
-          MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}
-          MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}
-          MYSQL_HOST: 127.0.0.1
-          TZ: ${CI_TZ}
+          MYSQL_DATABASE: laravel
+          MYSQL_USER: phper
+          MYSQL_PASSWORD: secret
+          MYSQL_ROOT_PASSWORD: secret
+          TZ: Asia/Tokyo
+        command:
+          [
+            --default-authentication-plugin=mysql_native_password,
+            --character-set-server=utf8mb4,
+            --collation-server=utf8mb4_ja_0900_as_cs_ks,
+          ]
 
     working_directory: ~/project
 
@@ -71,9 +76,9 @@ jobs:
             cd ~/project/api/src
             cp .env.example .env
             sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
-            sed -i "s/DB_DATABASE=.*/DB_DATABASE=${CI_MYSQL_DATABASE}/" .env
-            sed -i "s/DB_USERNAME=.*/DB_USERNAME=${CI_MYSQL_USER}/" .env
-            sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=${CI_MYSQL_PASSWORD}/" .env
+            sed -i 's/DB_DATABASE=.*/DB_DATABASE=laravel/' .env
+            sed -i 's/DB_USERNAME=.*/DB_USERNAME=phper/' .env
+            sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=secret/' .env
             php artisan key:generate
             php artisan jwt:secret
 
@@ -86,6 +91,11 @@ jobs:
           name: Debug Database Connection
           command: |
             cd ~/project/api/src
+            echo "MySQL Version:"
+            mysql --host=127.0.0.1 --user=phper --password=secret -e "SELECT VERSION();"
+            echo "Database connection details:"
+            php artisan tinker --execute="print_r(config('database.connections.mysql'));"
+            echo "Attempting connection:"
             php artisan tinker --execute="DB::connection()->getPdo();"
 
       - run:
