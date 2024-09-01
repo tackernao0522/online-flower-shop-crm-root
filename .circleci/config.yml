@@ -5,30 +5,84 @@ orbs:
 
 jobs:
   build:
-    docker:
-      - image: cimg/php:8.1-node
-      - image: mysql:8.0
-        environment:
-          MYSQL_DATABASE: ${CI_MYSQL_DATABASE}
-          MYSQL_USER: ${CI_MYSQL_USER}
-          MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}
-          MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}
-          TZ: ${CI_TZ}
-
-    working_directory: ~/project
+    machine:
+      image: ubuntu-2204:current
 
     steps:
-      - checkout
+      - checkout:
+          submodules: false
 
       - add_ssh_keys:
           fingerprints:
-            - ${CI_SSH_FINGERPRINT}
+            - "${CI_SSH_FINGERPRINT_ROOT}"
+            - "${CI_SSH_FINGERPRINT_API}"
+            - "${CI_SSH_FINGERPRINT_FRONT}"
 
       - run:
-          name: Checkout Submodules
+          name: Configure SSH for GitHub
+          command: |
+            mkdir -p ~/.ssh
+            echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/config
+
+      - run:
+          name: Debug SSH keys
+          command: |
+            ssh-add -l
+            ls -la ~/.ssh
+
+      - run:
+          name: Checkout Submodules with SSH
           command: |
             git submodule sync
-            git submodule update --init --recursive
+            git submodule update --init --recursive --depth 1
+
+      - run:
+          name: Install Required Packages
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+
+      - run:
+          name: Install Composer
+          command: |
+            curl -sS https://getcomposer.org/installer | php
+            sudo mv composer.phar /usr/local/bin/composer
+
+      - run:
+          name: Debug Environment Variables
+          command: |
+            echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
+            echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
+            echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
+            echo "CI_MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}"
+
+      - run:
+          name: Configure MySQL
+          command: |
+            sudo systemctl start mysql
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
+
+      - run:
+          name: Check MySQL Service
+          command: |
+            sudo systemctl status mysql --no-pager
+            mysql --version
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
+            sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
+          no_output_timeout: 1m
+
+      - run:
+          name: Restart MySQL Service if Needed
+          command: |
+            if ! sudo systemctl is-active --quiet mysql; then
+              sudo systemctl restart mysql
+            fi
 
       - restore_cache:
           keys:
@@ -40,6 +94,7 @@ jobs:
           command: |
             cd ~/project/api/src
             composer install --no-interaction --prefer-dist
+            composer require doctrine/dbal
 
       - save_cache:
           key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
@@ -47,19 +102,42 @@ jobs:
             - ~/project/api/src/vendor
 
       - run:
-          name: Create .env file
+          name: Create and Debug .env file
           command: |
             cd ~/project/api/src
             cp .env.example .env
-            sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env
-            sed -i 's/DB_PASSWORD=.*/${CI_DB_PASSWORD}/' .env
+            sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
+            sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
+            sed -i "s#DB_USERNAME=.*#DB_USERNAME=${CI_MYSQL_USER}#" .env
+            sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${CI_MYSQL_PASSWORD}#" .env
             php artisan key:generate
             php artisan jwt:secret
+            echo "Contents of .env file:"
+            cat .env
 
       - run:
-          name: Wait for DB
+          name: Clear Config Cache
           command: |
-            dockerize -wait tcp://localhost:3306 -timeout 1m
+            cd ~/project/api/src
+            php artisan config:clear
+            php artisan cache:clear
+
+      - run:
+          name: Debug Database Connection
+          command: |
+            cd ~/project/api/src
+            echo "Environment variables:"
+            echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
+            echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
+            echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
+            echo "MySQL Version:"
+            mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
+            echo "MySQL Users:"
+            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
+            echo "Database connection details:"
+            php artisan tinker --execute="print_r(config('database.connections.mysql'));"
+            echo "Attempting connection:"
+            php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); }"
 
       - run:
           name: Run database migrations and seed
