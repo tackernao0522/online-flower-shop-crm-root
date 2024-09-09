@@ -1,5 +1,5 @@
 services:
-  app:
+  api:
     build: ./api/infra/php
     volumes:
       - ./api/src:/data
