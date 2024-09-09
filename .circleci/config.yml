@@ -39,49 +39,83 @@ jobs:
             git submodule update --init --recursive --depth 1
 
       - run:
+          name: Check for API changes
+          command: |
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
+              echo "No changes in API. Skipping API tests."
+              echo "export SKIP_API_TESTS=true" >> $BASH_ENV
+            else
+              echo "Changes detected in API. Will run API tests."
+              echo "export SKIP_API_TESTS=false" >> $BASH_ENV
+            fi
+
+      - run:
+          name: Check for Frontend changes
+          command: |
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
+              echo "No changes in Frontend. Skipping Frontend tests."
+              echo "export SKIP_FRONTEND_TESTS=true" >> $BASH_ENV
+            else
+              echo "Changes detected in Frontend. Will run Frontend tests."
+              echo "export SKIP_FRONTEND_TESTS=false" >> $BASH_ENV
+            fi
+
+      - run:
           name: Install Required Packages
           command: |
-            sudo apt-get update
-            sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              sudo apt-get update
+              sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+            fi
 
       - run:
           name: Install Composer
           command: |
-            curl -sS https://getcomposer.org/installer | php
-            sudo mv composer.phar /usr/local/bin/composer
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              curl -sS https://getcomposer.org/installer | php
+              sudo mv composer.phar /usr/local/bin/composer
+            fi
 
       - run:
           name: Debug Environment Variables
           command: |
-            echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
-            echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
-            echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
-            echo "CI_MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}"
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
+              echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
+              echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
+              echo "CI_MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}"
+            fi
 
       - run:
           name: Configure MySQL
           command: |
-            sudo systemctl start mysql
-            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
-            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
-            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';"
-            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
-            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              sudo systemctl start mysql
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
+            fi
 
       - run:
           name: Check MySQL Service
           command: |
-            sudo systemctl status mysql --no-pager
-            mysql --version
-            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
-            sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              sudo systemctl status mysql --no-pager
+              mysql --version
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
+              sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
+            fi
           no_output_timeout: 1m
 
       - run:
           name: Restart MySQL Service if Needed
           command: |
-            if ! sudo systemctl is-active --quiet mysql; then
-              sudo systemctl restart mysql
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              if ! sudo systemctl is-active --quiet mysql; then
+                sudo systemctl restart mysql
+              fi
             fi
 
       - restore_cache:
@@ -92,9 +126,11 @@ jobs:
       - run:
           name: Install Composer Dependencies
           command: |
-            cd ~/project/api/src
-            composer install --no-interaction --prefer-dist
-            composer require doctrine/dbal
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              cd ~/project/api/src
+              composer install --no-interaction --prefer-dist
+              composer require doctrine/dbal
+            fi
 
       - save_cache:
           key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
@@ -104,52 +140,62 @@ jobs:
       - run:
           name: Create and Debug .env file
           command: |
-            cd ~/project/api/src
-            cp .env.example .env
-            sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
-            sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
-            sed -i "s#DB_USERNAME=.*#DB_USERNAME=${CI_MYSQL_USER}#" .env
-            sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${CI_MYSQL_PASSWORD}#" .env
-            php artisan key:generate
-            php artisan jwt:secret
-            echo "Contents of .env file:"
-            cat .env
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              cd ~/project/api/src
+              cp .env.example .env
+              sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
+              sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
+              sed -i "s#DB_USERNAME=.*#DB_USERNAME=${CI_MYSQL_USER}#" .env
+              sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${CI_MYSQL_PASSWORD}#" .env
+              php artisan key:generate
+              php artisan jwt:secret
+              echo "Contents of .env file:"
+              cat .env
+            fi
 
       - run:
           name: Clear Config Cache
           command: |
-            cd ~/project/api/src
-            php artisan config:clear
-            php artisan cache:clear
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              cd ~/project/api/src
+              php artisan config:clear
+              php artisan cache:clear
+            fi
 
       - run:
           name: Debug Database Connection
           command: |
-            cd ~/project/api/src
-            echo "Environment variables:"
-            echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
-            echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
-            echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
-            echo "MySQL Version:"
-            mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
-            echo "MySQL Users:"
-            sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
-            echo "Database connection details:"
-            php artisan tinker --execute="print_r(config('database.connections.mysql'));"
-            echo "Attempting connection:"
-            php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); }"
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              cd ~/project/api/src
+              echo "Environment variables:"
+              echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
+              echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
+              echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
+              echo "MySQL Version:"
+              mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
+              echo "MySQL Users:"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
+              echo "Database connection details:"
+              php artisan tinker --execute="print_r(config('database.connections.mysql'));"
+              echo "Attempting connection:"
+              php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); }"
+            fi
 
       - run:
           name: Run database migrations and seed
           command: |
-            cd ~/project/api/src
-            php artisan migrate --force --seed
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              cd ~/project/api/src
+              php artisan migrate --force --seed
+            fi
 
       - run:
           name: Run Laravel tests
           command: |
-            cd ~/project/api/src
-            php artisan test
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              cd ~/project/api/src
+              php artisan test
+            fi
 
       - node/install:
           node-version: "18.17.0"
@@ -162,7 +208,10 @@ jobs:
       - run:
           name: Install Node.js dependencies
           working_directory: ~/project/front
-          command: npm install
+          command: |
+            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
+              npm install
+            fi
 
       - save_cache:
           key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
@@ -172,7 +221,10 @@ jobs:
       - run:
           name: Run frontend tests
           working_directory: ~/project/front
-          command: npm test
+          command: |
+            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
+              npm test
+            fi
 
 workflows:
   version: 2
