@@ -129,7 +129,6 @@ jobs:
             if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
               composer install --no-interaction --prefer-dist
-              composer require doctrine/dbal
             fi
 
       - save_cache:
@@ -147,6 +146,10 @@ jobs:
               sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
               sed -i "s#DB_USERNAME=.*#DB_USERNAME=${CI_MYSQL_USER}#" .env
               sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${CI_MYSQL_PASSWORD}#" .env
+              sed -i "s#PUSHER_APP_ID=.*#PUSHER_APP_ID=${PUSHER_APP_ID}#" .env
+              sed -i "s#PUSHER_APP_KEY=.*#PUSHER_APP_KEY=${PUSHER_APP_KEY}#" .env
+              sed -i "s#PUSHER_******=.*#PUSHER_******=${PUSHER_******}#" .env
+              sed -i "s#PUSHER_APP_CLUSTER=.*#PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER}#" .env
               php artisan key:generate
               php artisan jwt:secret
               echo "Contents of .env file:"
