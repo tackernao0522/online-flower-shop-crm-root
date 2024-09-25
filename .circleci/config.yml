@@ -216,7 +216,7 @@ jobs:
               npm install
             fi
 
-            - save_cache:
+      - save_cache:
           key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
           paths:
             - ~/project/front/node_modules
