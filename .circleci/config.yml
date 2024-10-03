@@ -213,7 +213,7 @@ jobs:
           command: |
             ls -la ~/project/front
 
-            - run:
+      - run:
           name: Install Node.js dependencies
           working_directory: ~/project/front
           command: |
