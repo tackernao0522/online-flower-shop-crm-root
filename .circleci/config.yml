@@ -235,13 +235,22 @@ jobs:
               npm test
             fi
 
-      - aws-cli/setup
+      - aws-cli/setup:
+          region: ap-northeast-1
+
+      - run:
+          name: Configure AWS CLI
+          command: |
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws configure set default.region ap-northeast-1
 
       - run:
           name: Print AWS Credentials
           command: |
             echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}"
             echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}"
+            aws configure list
 
       - run:
           name: Test AWS CLI Credentials
