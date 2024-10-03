@@ -235,6 +235,12 @@ jobs:
             fi
 
       - run:
+          name: Print AWS Credentials
+          command: |
+            echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}"
+            echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}"
+
+      - run:
           name: Deploy to AWS ECS
           command: |
             echo "Deploying to AWS ECS..."
@@ -243,6 +249,16 @@ jobs:
           environment:
             AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
             AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+
+      - run:
+          name: Test AWS CLI Credentials
+          command: |
+            aws sts get-caller-identity
+
+      - run:
+          name: Check AWS CLI Version
+          command: |
+            aws --version
 
 workflows:
   version: 2
