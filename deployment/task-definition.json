@@ -23,13 +23,13 @@
         },
         {
           "name": "DB_HOST",
-          "value": "${db_host}"
+          "value": "main-rds.c92uqwag6qc9.ap-northeast-1.rds.amazonaws.com"
         }
       ],
       "secrets": [
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "main-rds.c92uqwag6cq9.ap-northeast-1.rds.amazonaws.com"
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:699475951464:secret:db-password"
         }
       ]
     },
