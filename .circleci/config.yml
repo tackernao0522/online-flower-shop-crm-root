@@ -235,8 +235,7 @@ jobs:
               npm test
             fi
 
-      - aws-cli/setup:
-          region: ap-northeast-1
+      - aws-cli/setup
 
       - run:
           name: Configure AWS CLI
