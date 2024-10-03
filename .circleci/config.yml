@@ -217,7 +217,7 @@ jobs:
             fi
 
       - save_cache:
-          key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
+          key: node-v1-{{ checksum "~/project/front/package-lock.json " }}
           paths:
             - ~/project/front/node_modules
 
@@ -228,6 +228,13 @@ jobs:
             if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
               npm test
             fi
+
+      - run:
+          name: Deploy to AWS ECS
+          command: |
+            echo "Deploying to AWS ECS..."
+            aws ecs update-service --cluster ecs-cluster --service app-service --force-new-deployment --desired-count 1
+            echo "Deployment triggered!"
 
 workflows:
   version: 2
