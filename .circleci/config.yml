@@ -209,6 +209,11 @@ jobs:
             - node-v1-
 
       - run:
+          name: Check if package-lock.json exists
+          command: |
+            ls -la ~/project/front
+
+            - run:
           name: Install Node.js dependencies
           working_directory: ~/project/front
           command: |
@@ -217,7 +222,7 @@ jobs:
             fi
 
       - save_cache:
-          key: node-v1-{{ checksum "~/project/front/package-lock.json " }}
+          key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
           paths:
             - ~/project/front/node_modules
 
