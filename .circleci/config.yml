@@ -3,8 +3,6 @@ version: 2.1
 orbs:
   node: circleci/node@5.0.2
   aws-cli: circleci/aws-cli@2.0.3
-  aws-ecr: circleci/aws-ecr@7.0.0
-  aws-ecs: circleci/aws-ecs@2.4.0
   slack: circleci/slack@4.1.0
 
 jobs:
@@ -201,9 +199,9 @@ jobs:
               echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
               echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
               echo "MySQL Version:"
-                            if ! mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();"; then
-                echo "Failed to connect with user"
-                exit 1
+              if ! mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();"; then
+                echo "Failed to connect with user
+                                exit 1
               fi
               echo "MySQL Users:"
               if ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"; then
@@ -233,7 +231,7 @@ jobs:
       - run:
           name: Run Laravel tests
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ];then
+            if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
               if ! php artisan test; then
                 echo "Laravel tests failed"
@@ -310,15 +308,7 @@ jobs:
           command: |
             aws --version
 
-      - run:
-          name: Test ECS Permissions
-          command: |
-            if ! aws ecs describe-services --cluster ecs-cluster --services app-service --region ap-northeast-1; then
-              echo "Failed to describe ECS services. Check your permissions."
-              exit 1
-            fi
-
-      # DockerイメージをビルドしてAWS ECRにプッシュ
+      # DockerイメージのビルドとAWS ECRへのプッシュ
       - run:
           name: Build Laravel Docker Image
           command: |
@@ -333,11 +323,6 @@ jobs:
           name: Build Nginx Docker Image
           command: |
             docker build -t nginx:latest -f infra/nginx/Dockerfile .
-
-      - aws-ecr/login:
-          aws-access-key-id: AWS_ACCESS_KEY_ID
-          aws-secret-access-key: AWS_SECRET_ACCESS_KEY
-          region: ap-northeast-1
 
       - run:
           name: Push Laravel Docker Image to ECR
@@ -357,13 +342,16 @@ jobs:
             docker tag nginx:latest 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/nginx:latest
             docker push 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/nginx:latest
 
-      # ECSサービスを更新
-      - aws-ecs/deploy-service-update:
-          family: app-task
-          cluster-name: ecs-cluster
-          service-name: app-service
-          aws-region: ap-northeast-1
-          force-new-deployment: true
+      # ECSサービスのデプロイ
+      - run:
+          name: Deploy to AWS ECS
+          command: |
+            echo "Deploying to AWS ECS..."
+            if ! aws ecs update-service --cluster ecs-cluster --service app-service --force-new-deployment --desired-count 1 --region ap-northeast-1; then
+              echo "Failed to update ECS service"
+              exit 1
+            fi
+            echo "Deployment triggered!"
 
       - run:
           name: Check Deployment Status
