@@ -339,12 +339,12 @@ jobs:
 
       - slack/notify:
           event: fail
-          channel_id: ${SLACK_CHANNEL_ID}
+          channel: ${SLACK_CHANNEL_ID}
           template: basic_fail_1
 
       - slack/notify:
           event: pass
-          channel_id: ${SLACK_CHANNEL_ID}
+          channel: ${SLACK_CHANNEL_ID}
           template: success_tagged_deploy_1
 
 workflows:
