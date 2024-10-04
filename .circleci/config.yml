@@ -3,6 +3,8 @@ version: 2.1
 orbs:
   node: circleci/node@5.0.2
   aws-cli: circleci/aws-cli@2.0.3
+  aws-ecr: circleci/aws-ecr@7.0.0
+  aws-ecs: circleci/aws-ecs@2.4.0
   slack: circleci/slack@4.1.0
 
 jobs:
@@ -199,7 +201,7 @@ jobs:
               echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
               echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
               echo "MySQL Version:"
-              if ! mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();"; then
+                            if ! mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();"; then
                 echo "Failed to connect with user"
                 exit 1
               fi
@@ -231,7 +233,7 @@ jobs:
       - run:
           name: Run Laravel tests
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
+            if [ "$SKIP_API_TESTS" = "false" ];then
               cd ~/project/api/src
               if ! php artisan test; then
                 echo "Laravel tests failed"
@@ -316,15 +318,52 @@ jobs:
               exit 1
             fi
 
+      # DockerイメージをビルドしてAWS ECRにプッシュ
       - run:
-          name: Deploy to AWS ECS
+          name: Build Laravel Docker Image
           command: |
-            echo "Deploying to AWS ECS..."
-            if ! aws ecs update-service --cluster ecs-cluster --service app-service --force-new-deployment --desired-count 1 --region ap-northeast-1; then
-              echo "Failed to update ECS service"
-              exit 1
-            fi
-            echo "Deployment triggered!"
+            docker build -t laravel-app:latest -f infra/php/Dockerfile .
+
+      - run:
+          name: Build Next.js Docker Image
+          command: |
+            docker build -t nextjs-app:latest -f front/Dockerfile .
+
+      - run:
+          name: Build Nginx Docker Image
+          command: |
+            docker build -t nginx:latest -f infra/nginx/Dockerfile .
+
+      - aws-ecr/login:
+          aws-access-key-id: AWS_ACCESS_KEY_ID
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY
+          region: ap-northeast-1
+
+      - run:
+          name: Push Laravel Docker Image to ECR
+          command: |
+            docker tag laravel-app:latest 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/laravel-app:latest
+            docker push 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/laravel-app:latest
+
+      - run:
+          name: Push Next.js Docker Image to ECR
+          command: |
+            docker tag nextjs-app:latest 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/nextjs-app:latest
+            docker push 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/nextjs-app:latest
+
+      - run:
+          name: Push Nginx Docker Image to ECR
+          command: |
+            docker tag nginx:latest 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/nginx:latest
+            docker push 699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/nginx:latest
+
+      # ECSサービスを更新
+      - aws-ecs/deploy-service-update:
+          family: app-task
+          cluster-name: ecs-cluster
+          service-name: app-service
+          aws-region: ap-northeast-1
+          force-new-deployment: true
 
       - run:
           name: Check Deployment Status
