@@ -313,10 +313,10 @@ jobs:
 
       # DockerイメージのビルドとAWS ECRへのプッシュ
       - run:
-          name: Build Laravel Docker Image
+          name: Build Laravel Docker Image for Production
           working_directory: ~/project/api
           command: |
-            docker build -t laravel-app:latest -f infra/php/Dockerfile .
+            docker build -t laravel-app:latest -f infra/php/Dockerfile.prod .
 
       - run:
           name: Build Next.js Docker Image
