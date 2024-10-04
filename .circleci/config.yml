@@ -200,8 +200,8 @@ jobs:
               echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
               echo "MySQL Version:"
               if ! mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();"; then
-                echo "Failed to connect with user
-                                exit 1
+                echo "Failed to connect with user"
+                exit 1
               fi
               echo "MySQL Users:"
               if ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"; then
@@ -209,9 +209,12 @@ jobs:
                 exit 1
               fi
               echo "Database connection details:"
-              php artisan tinker --execute="print_r(config('database.connections.mysql'));"
+              if ! php artisan tinker --execute='print_r(config("database.connections.mysql"));'; then
+                echo "Failed to print database connection details"
+                exit 1
+              fi
               echo "Attempting connection:"
-              if ! php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); exit(1); }"; then
+              if ! php artisan tinker --execute='try { DB::connection()->getPdo(); echo "Connection successful!"; } catch (\Exception $e) { echo "Connection failed: " . $e->getMessage(); exit(1); }'; then
                 echo "Failed to connect to database"
                 exit 1
               fi
