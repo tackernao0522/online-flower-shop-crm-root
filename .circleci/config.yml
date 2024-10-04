@@ -3,6 +3,7 @@ version: 2.1
 orbs:
   node: circleci/node@5.0.2
   aws-cli: circleci/aws-cli@2.0.3
+  slack: circleci/slack@4.1.0
 
 jobs:
   build:
@@ -36,8 +37,10 @@ jobs:
       - run:
           name: Checkout Submodules with SSH
           command: |
-            git submodule sync
-            git submodule update --init --recursive --depth 1
+            if ! git submodule sync || ! git submodule update --init --recursive --depth 1; then
+              echo "Failed to checkout submodules"
+              exit 1
+            fi
 
       - run:
           name: Check for API changes
@@ -65,16 +68,20 @@ jobs:
           name: Install Required Packages
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              sudo apt-get update
-              sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+              if ! sudo apt-get update || ! sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl; then
+                echo "Failed to install required packages"
+                exit 1
+              fi
             fi
 
       - run:
           name: Install Composer
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              curl -sS https://getcomposer.org/installer | php
-              sudo mv composer.phar /usr/local/bin/composer
+              if ! curl -sS https://getcomposer.org/installer | php || ! sudo mv composer.phar /usr/local/bin/composer; then
+                echo "Failed to install Composer"
+                exit 1
+              fi
             fi
 
       - run:
@@ -91,22 +98,28 @@ jobs:
           name: Configure MySQL
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              sudo systemctl start mysql
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
+              if ! sudo systemctl start mysql || \
+                 ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';" || \
+                 ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};" || \
+                 ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';" || \
+                 ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';" || \
+                 ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"; then
+                echo "Failed to configure MySQL"
+                exit 1
+              fi
             fi
 
       - run:
           name: Check MySQL Service
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              sudo systemctl status mysql --no-pager
-              mysql --version
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
-              sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
+              if ! sudo systemctl status mysql --no-pager || \
+                 ! mysql --version || \
+                 ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;" || \
+                 ! sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"; then
+                echo "MySQL service check failed"
+                exit 1
+              fi
             fi
           no_output_timeout: 1m
 
@@ -115,7 +128,10 @@ jobs:
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
               if ! sudo systemctl is-active --quiet mysql; then
-                sudo systemctl restart mysql
+                if ! sudo systemctl restart mysql; then
+                  echo "Failed to restart MySQL service"
+                  exit 1
+                fi
               fi
             fi
 
@@ -129,7 +145,10 @@ jobs:
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
-              composer install --no-interaction --prefer-dist
+              if ! composer install --no-interaction --prefer-dist; then
+                echo "Failed to install Composer dependencies"
+                exit 1
+              fi
             fi
 
       - save_cache:
@@ -151,8 +170,10 @@ jobs:
               sed -i "s#PUSHER_APP_KEY=.*#PUSHER_APP_KEY=${PUSHER_APP_KEY}#" .env
               sed -i "s#PUSHER_APP_SECRET=.*#PUSHER_APP_SECRET=${PUSHER_APP_SECRET}#" .env
               sed -i "s#PUSHER_APP_CLUSTER=.*#PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER}#" .env
-              php artisan key:generate
-              php artisan jwt:secret
+              if ! php artisan key:generate || ! php artisan jwt:secret; then
+                echo "Failed to generate Laravel keys"
+                exit 1
+              fi
               echo "Contents of .env file:"
               cat .env
             fi
@@ -162,8 +183,10 @@ jobs:
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
-              php artisan config:clear
-              php artisan cache:clear
+              if ! php artisan config:clear || ! php artisan cache:clear; then
+                echo "Failed to clear Laravel cache"
+                exit 1
+              fi
             fi
 
       - run:
@@ -176,13 +199,22 @@ jobs:
               echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
               echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
               echo "MySQL Version:"
-              mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
+              if ! mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();"; then
+                echo "Failed to connect with user"
+                exit 1
+              fi
               echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
+              if ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"; then
+                echo "Failed to list MySQL users"
+                exit 1
+              fi
               echo "Database connection details:"
               php artisan tinker --execute="print_r(config('database.connections.mysql'));"
               echo "Attempting connection:"
-              php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); }"
+              if ! php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); exit(1); }"; then
+                echo "Failed to connect to database"
+                exit 1
+              fi
             fi
 
       - run:
@@ -190,7 +222,10 @@ jobs:
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
-              php artisan migrate --force --seed
+              if ! php artisan migrate --force --seed; then
+                echo "Failed to run database migrations and seeding"
+                exit 1
+              fi
             fi
 
       - run:
@@ -198,7 +233,10 @@ jobs:
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
-              php artisan test
+              if ! php artisan test; then
+                echo "Laravel tests failed"
+                exit 1
+              fi
             fi
 
       - node/install:
@@ -219,7 +257,10 @@ jobs:
           working_directory: ~/project/front
           command: |
             if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
-              npm install
+              if ! npm install; then
+                echo "Failed to install Node.js dependencies"
+                exit 1
+              fi
             fi
 
       - save_cache:
@@ -232,7 +273,10 @@ jobs:
           working_directory: ~/project/front
           command: |
             if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
-              npm test
+              if ! npm test; then
+                echo "Frontend tests failed"
+                exit 1
+              fi
             fi
 
       - aws-cli/setup
@@ -254,7 +298,10 @@ jobs:
       - run:
           name: Test AWS CLI Credentials
           command: |
-            aws sts get-caller-identity
+            if ! aws sts get-caller-identity; then
+              echo "Failed to verify AWS credentials"
+              exit 1
+            fi
 
       - run:
           name: Check AWS CLI Version
@@ -264,14 +311,41 @@ jobs:
       - run:
           name: Test ECS Permissions
           command: |
-            aws ecs describe-services --cluster ecs-cluster --services app-service --region ap-northeast-1
+            if ! aws ecs describe-services --cluster ecs-cluster --services app-service --region ap-northeast-1; then
+              echo "Failed to describe ECS services. Check your permissions."
+              exit 1
+            fi
 
       - run:
           name: Deploy to AWS ECS
           command: |
             echo "Deploying to AWS ECS..."
-            aws ecs update-service --cluster ecs-cluster --service app-service --force-new-deployment --desired-count 1 --region ap-northeast-1
+            if ! aws ecs update-service --cluster ecs-cluster --service app-service --force-new-deployment --desired-count 1 --region ap-northeast-1; then
+              echo "Failed to update ECS service"
+              exit 1
+            fi
             echo "Deployment triggered!"
+
+      - run:
+          name: Check Deployment Status
+          command: |
+            echo "Waiting for 5 minutes before checking deployment status..."
+            sleep 300
+            if ! aws ecs describe-services --cluster ecs-cluster --services app-service --region ap-northeast-1 | grep -q '"status": "ACTIVE"'; then
+              echo "Deployment may have failed. Check ECS console for more details."
+              exit 1
+            fi
+            echo "Deployment seems to be successful!"
+
+      - slack/notify:
+          event: fail
+          channel_id: ${SLACK_CHANNEL_ID}
+          template: basic_fail_1
+
+      - slack/notify:
+          event: pass
+          channel_id: ${SLACK_CHANNEL_ID}
+          template: success_tagged_deploy_1
 
 workflows:
   version: 2

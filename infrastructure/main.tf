@@ -1,5 +1,7 @@
 provider "aws" {
-  region = "ap-northeast-1"
+  region     = "ap-northeast-1"
+  access_key = var.aws_access_key_id == "" ? null : var.aws_access_key_id
+  secret_key = var.aws_secret_access_key == "" ? null : var.aws_secret_access_key
 }
 
 terraform {
@@ -134,11 +136,14 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = "512"
   memory                   = "1024"
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
       name      = "laravel-app"
       image     = "${aws_ecr_repository.laravel.repository_url}:latest"
+      cpu       = 256
+      memory    = 512
       essential = true
       portMappings = [{
         containerPort = 9000
@@ -146,29 +151,88 @@ resource "aws_ecs_task_definition" "app" {
       }]
       environment = [
         { name = "APP_ENV", value = "production" },
-        { name = "DB_HOST", value = aws_db_instance.default.address }
+        { name = "APP_DEBUG", value = "false" },
+        { name = "APP_URL", value = "https://www.tkb-tech.com" },
+        { name = "DB_CONNECTION", value = "mysql" },
+        { name = "DB_HOST", value = aws_db_instance.default.address },
+        { name = "DB_PORT", value = "3306" },
+        { name = "DB_DATABASE", value = var.db_name },
+        { name = "DB_USERNAME", value = var.db_username },
+        { name = "BROADCAST_DRIVER", value = "pusher" },
+        { name = "CACHE_DRIVER", value = "redis" },
+        { name = "FILESYSTEM_DISK", value = "s3" },
+        { name = "QUEUE_CONNECTION", value = "redis" },
+        { name = "SESSION_DRIVER", value = "redis" },
+        { name = "AWS_DEFAULT_REGION", value = "ap-northeast-1" },
+        { name = "AWS_BUCKET", value = var.s3_bucket_name },
+        { name = "PUSHER_APP_CLUSTER", value = "ap3" }
       ]
       secrets = [
-        { name = "DB_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password.arn }
+        { name = "APP_KEY", valueFrom = aws_secretsmanager_secret.app_key.arn },
+        { name = "DB_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password.arn },
+        { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_password.arn },
+        { name = "AWS_ACCESS_KEY_ID", valueFrom = aws_secretsmanager_secret.aws_access_key_id.arn },
+        { name = "AWS_SECRET_ACCESS_KEY", valueFrom = aws_secretsmanager_secret.aws_secret_access_key.arn },
+        { name = "PUSHER_APP_ID", valueFrom = aws_secretsmanager_secret.pusher_app_id.arn },
+        { name = "PUSHER_APP_KEY", valueFrom = aws_secretsmanager_secret.pusher_app_key.arn },
+        { name = "PUSHER_APP_SECRET", valueFrom = aws_secretsmanager_secret.pusher_app_secret.arn }
       ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/app-task"
+          awslogs-region        = "ap-northeast-1"
+          awslogs-stream-prefix = "laravel"
+        }
+      }
     },
     {
       name      = "nextjs-app"
       image     = "${aws_ecr_repository.nextjs.repository_url}:latest"
+      cpu       = 128
+      memory    = 256
       essential = true
       portMappings = [{
         containerPort = 3000
         hostPort      = 3000
       }]
+      environment = [
+        { name = "NEXT_PUBLIC_API_URL", value = "https://tkb-tech.com" }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/app-task"
+          awslogs-region        = "ap-northeast-1"
+          awslogs-stream-prefix = "nextjs"
+        }
+      }
     },
     {
       name      = "nginx"
       image     = "${aws_ecr_repository.nginx.repository_url}:latest"
+      cpu       = 128
+      memory    = 256
       essential = true
       portMappings = [{
         containerPort = 80
         hostPort      = 80
       }]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/app-task"
+          awslogs-region        = "ap-northeast-1"
+          awslogs-stream-prefix = "nginx"
+        }
+      }
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
     }
   ])
 }
@@ -233,12 +297,22 @@ resource "aws_lb_listener" "https" {
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = "arn:aws:acm:ap-northeast-1:699475951464:certificate/75734af9-c4e1-474b-a5ba-0854fec6013a"
+  certificate_arn   = "arn:aws:acm:ap-northeast-1:699475951464:certificate/8ce690d8-3909-405c-aa46-f64ba354cc2e"
 
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.main.arn
   }
+
+  lifecycle {
+    ignore_changes = [default_action]
+  }
+}
+
+# 既存のリスナーをインポート
+import {
+  to = aws_lb_listener.https
+  id = "arn:aws:elasticloadbalancing:ap-northeast-1:699475951464:listener/app/main-lb/e18d972aa80c53a1/444c9212f1acc5f6"
 }
 
 # ALBターゲットグループ
@@ -282,6 +356,30 @@ resource "aws_iam_role" "ecs_task_execution_role" {
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# ECSタスクロールの作成
+resource "aws_iam_role" "ecs_task_role" {
+  name = "ecs-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# ECSタスクロールにポリシーをアタッチ
+resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"  # S3へのフルアクセスを許可
 }
 
 # RDSインスタンスの作成
@@ -369,6 +467,75 @@ resource "aws_secretsmanager_secret_version" "db_password" {
   secret_string = var.db_password
 }
 
+resource "aws_secretsmanager_secret" "app_key" {
+  name = "app-key"
+}
+
+resource "aws_secretsmanager_secret_version" "app_key" {
+  secret_id     = aws_secretsmanager_secret.app_key.id
+  secret_string = var.app_key
+}
+
+resource "aws_secretsmanager_secret" "redis_password" {
+  name = "redis-password"
+}
+
+resource "aws_secretsmanager_secret_version" "redis_password" {
+  secret_id     = aws_secretsmanager_secret.redis_password.id
+  secret_string = var.redis_password
+}
+
+resource "aws_secretsmanager_secret" "aws_access_key_id" {
+  name = "aws-access-key-id"
+}
+
+resource "aws_secretsmanager_secret_version" "aws_access_key_id" {
+  secret_id     = aws_secretsmanager_secret.aws_access_key_id.id
+  secret_string = var.aws_access_key_id != "" ? var.aws_access_key_id : "dummy_value"
+}
+
+resource "aws_secretsmanager_secret" "aws_secret_access_key" {
+  name = "aws-secret-access-key"
+}
+
+resource "aws_secretsmanager_secret_version" "aws_secret_access_key" {
+  secret_id     = aws_secretsmanager_secret.aws_secret_access_key.id
+  secret_string = var.aws_secret_access_key != "" ? var.aws_secret_access_key : "dummy_value"
+}
+
+resource "aws_secretsmanager_secret" "pusher_app_id" {
+  name = "pusher-app-id"
+}
+
+resource "aws_secretsmanager_secret_version" "pusher_app_id" {
+  secret_id     = aws_secretsmanager_secret.pusher_app_id.id
+  secret_string = var.pusher_app_id
+}
+
+resource "aws_secretsmanager_secret" "pusher_app_key" {
+  name = "pusher-app-key"
+}
+
+resource "aws_secretsmanager_secret_version" "pusher_app_key" {
+  secret_id     = aws_secretsmanager_secret.pusher_app_key.id
+  secret_string = var.pusher_app_key
+}
+
+resource "aws_secretsmanager_secret" "pusher_app_secret" {
+  name = "pusher-app-secret"
+}
+
+resource "aws_secretsmanager_secret_version" "pusher_app_secret" {
+  secret_id     = aws_secretsmanager_secret.pusher_app_secret.id
+  secret_string = var.pusher_app_secret
+}
+
+# CloudWatch Logs Group
+resource "aws_cloudwatch_log_group" "ecs_logs" {
+  name              = "/ecs/app-task"
+  retention_in_days = 30
+}
+
 # 変数の定義
 variable "db_name" {
   description = "Name of the database"
@@ -382,5 +549,47 @@ variable "db_username" {
 
 variable "db_password" {
   description = "Password for the database"
+  type        = string
+}
+
+variable "app_key" {
+  description = "Laravel APP_KEY"
+  type        = string
+}
+
+variable "redis_password" {
+  description = "Redis password"
+  type        = string
+}
+
+variable "aws_access_key_id" {
+  description = "AWS Access Key ID"
+  type        = string
+  default     = ""
+}
+
+variable "aws_secret_access_key" {
+  description = "AWS Secret Access Key"
+  type        = string
+  default     = ""
+}
+
+variable "s3_bucket_name" {
+  description = "S3 bucket name for file storage"
+  type        = string
+}
+
+variable "pusher_app_id" {
+  description = "Pusher App ID"
+  type        = string
+}
+
+variable "pusher_app_key" {
+  description = "Pusher App Key"
+  type        = string
+}
+
+variable "pusher_app_secret" {
+  description = "Pusher App Secret"
   type        = string
 }
