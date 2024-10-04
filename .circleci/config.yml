@@ -204,13 +204,13 @@ jobs:
                 exit 1
               fi
               echo "MySQL Users:"
-              if ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"; then
+                            if ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"; then
                 echo "Failed to list MySQL users"
                 exit 1
               fi
               echo "Database connection details:"
               if ! php artisan tinker --execute='print_r(config("database.connections.mysql"));'; then
-                                echo "Failed to print database connection details"
+                echo "Failed to print database connection details"
                 exit 1
               fi
               echo "Attempting connection:"
