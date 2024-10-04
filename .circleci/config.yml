@@ -207,7 +207,7 @@ jobs:
               if ! sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"; then
                 echo "Failed to list MySQL users"
                 exit 1
-              fi
+                            fi
               echo "Database connection details:"
               if ! php artisan tinker --execute='print_r(config("database.connections.mysql"));'; then
                 echo "Failed to print database connection details"
@@ -314,16 +314,19 @@ jobs:
       # DockerイメージのビルドとAWS ECRへのプッシュ
       - run:
           name: Build Laravel Docker Image
+          working_directory: ~/project/api
           command: |
             docker build -t laravel-app:latest -f infra/php/Dockerfile .
 
       - run:
           name: Build Next.js Docker Image
+          working_directory: ~/project
           command: |
             docker build -t nextjs-app:latest -f front/Dockerfile .
 
       - run:
           name: Build Nginx Docker Image
+          working_directory: ~/project/api
           command: |
             docker build -t nginx:latest -f infra/nginx/Dockerfile .
 
