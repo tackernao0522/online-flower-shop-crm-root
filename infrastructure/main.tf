@@ -128,7 +128,90 @@ resource "aws_ecr_repository" "nginx" {
   name = "nginx"
 }
 
-# ECSタスク定義の作成（修正版）
+# Secrets Manager に保存された本番環境の秘密情報
+resource "aws_secretsmanager_secret" "db_password" {
+  name = "db-password"
+}
+
+resource "aws_secretsmanager_secret_version" "db_password" {
+  secret_id     = aws_secretsmanager_secret.db_password.id
+  secret_string = var.db_password
+}
+
+resource "aws_secretsmanager_secret" "app_key" {
+  name = "app-key"
+}
+
+resource "aws_secretsmanager_secret_version" "app_key" {
+  secret_id     = aws_secretsmanager_secret.app_key.id
+  secret_string = var.app_key
+}
+
+resource "aws_secretsmanager_secret" "redis_password" {
+  name = "redis-password"
+}
+
+resource "aws_secretsmanager_secret_version" "redis_password" {
+  secret_id     = aws_secretsmanager_secret.redis_password.id
+  secret_string = var.redis_password
+}
+
+resource "aws_secretsmanager_secret" "aws_access_key_id" {
+  name = "aws-access-key-id"
+}
+
+resource "aws_secretsmanager_secret_version" "aws_access_key_id" {
+  secret_id     = aws_secretsmanager_secret.aws_access_key_id.id
+  secret_string = var.aws_access_key_id
+}
+
+resource "aws_secretsmanager_secret" "aws_secret_access_key" {
+  name = "aws-secret-access-key"
+}
+
+resource "aws_secretsmanager_secret_version" "aws_secret_access_key" {
+  secret_id     = aws_secretsmanager_secret.aws_secret_access_key.id
+  secret_string = var.aws_secret_access_key
+}
+
+resource "aws_secretsmanager_secret" "pusher_app_id" {
+  name = "pusher-app-id"
+}
+
+resource "aws_secretsmanager_secret_version" "pusher_app_id" {
+  secret_id     = aws_secretsmanager_secret.pusher_app_id.id
+  secret_string = var.pusher_app_id
+}
+
+resource "aws_secretsmanager_secret" "pusher_app_key" {
+  name = "pusher-app-key"
+}
+
+resource "aws_secretsmanager_secret_version" "pusher_app_key" {
+  secret_id     = aws_secretsmanager_secret.pusher_app_key.id
+  secret_string = var.pusher_app_key
+}
+
+resource "aws_secretsmanager_secret" "pusher_app_secret" {
+  name = "pusher-app-secret"
+}
+
+resource "aws_secretsmanager_secret_version" "pusher_app_secret" {
+  secret_id     = aws_secretsmanager_secret.pusher_app_secret.id
+  secret_string = var.pusher_app_secret
+}
+
+# NEXT_PUBLIC_API_URLをSecrets Managerに保存
+resource "aws_secretsmanager_secret" "next_public_api_url" {
+  name = "next-public-api-url"
+}
+
+resource "aws_secretsmanager_secret_version" "next_public_api_url_version" {
+  secret_id     = aws_secretsmanager_secret.next_public_api_url.id
+  secret_string = var.next_public_api_url
+}
+
+# ECSタスク定義の作成
 resource "aws_ecs_task_definition" "app" {
   family                   = "app-task"
   network_mode             = "awsvpc"
@@ -151,7 +234,7 @@ resource "aws_ecs_task_definition" "app" {
       }]
       environment = [
         { name = "APP_ENV", value = "production" },
-        { name = "APP_DEBUG", value = "false" },
+        { name = "APP_DEBUG", value = "false" },  # 本番環境なのでデバッグは無効
         { name = "APP_URL", value = "https://www.tkb-tech.com" },
         { name = "DB_CONNECTION", value = "mysql" },
         { name = "DB_HOST", value = aws_db_instance.default.address },
@@ -170,7 +253,7 @@ resource "aws_ecs_task_definition" "app" {
       secrets = [
         { name = "APP_KEY", valueFrom = aws_secretsmanager_secret.app_key.arn },
         { name = "DB_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password.arn },
-        { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_password.arn },
+               { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_password.arn },
         { name = "AWS_ACCESS_KEY_ID", valueFrom = aws_secretsmanager_secret.aws_access_key_id.arn },
         { name = "AWS_SECRET_ACCESS_KEY", valueFrom = aws_secretsmanager_secret.aws_secret_access_key.arn },
         { name = "PUSHER_APP_ID", valueFrom = aws_secretsmanager_secret.pusher_app_id.arn },
@@ -202,8 +285,9 @@ resource "aws_ecs_task_definition" "app" {
         containerPort = 3000
         hostPort      = 3000
       }]
-      environment = [
-        { name = "NEXT_PUBLIC_API_URL", value = "https://tkb-tech.com" }
+      environment = []
+      secrets = [
+        { name = "NEXT_PUBLIC_API_URL", valueFrom = aws_secretsmanager_secret.next_public_api_url.arn }
       ]
       logConfiguration = {
         logDriver = "awslogs"
@@ -329,12 +413,6 @@ resource "aws_lb_listener" "https" {
   lifecycle {
     ignore_changes = [default_action]
   }
-}
-
-# 既存のリスナーをインポート
-import {
-  to = aws_lb_listener.https
-  id = "arn:aws:elasticloadbalancing:ap-northeast-1:699475951464:listener/app/main-lb/e18d972aa80c53a1/444c9212f1acc5f6"
 }
 
 # ALBターゲットグループ
@@ -479,79 +557,6 @@ data "aws_route53_zone" "main" {
   name = "tkb-tech.com"
 }
 
-# Secrets Manager シークレット
-resource "aws_secretsmanager_secret" "db_password" {
-  name = "db-password"
-}
-
-resource "aws_secretsmanager_secret_version" "db_password" {
-  secret_id     = aws_secretsmanager_secret.db_password.id
-  secret_string = var.db_password
-}
-
-resource "aws_secretsmanager_secret" "app_key" {
-  name = "app-key"
-}
-
-resource "aws_secretsmanager_secret_version" "app_key" {
-  secret_id     = aws_secretsmanager_secret.app_key.id
-  secret_string = var.app_key
-}
-
-resource "aws_secretsmanager_secret" "redis_password" {
-  name = "redis-password"
-}
-
-resource "aws_secretsmanager_secret_version" "redis_password" {
-  secret_id     = aws_secretsmanager_secret.redis_password.id
-  secret_string = var.redis_password
-}
-
-resource "aws_secretsmanager_secret" "aws_access_key_id" {
-  name = "aws-access-key-id"
-}
-
-resource "aws_secretsmanager_secret_version" "aws_access_key_id" {
-  secret_id     = aws_secretsmanager_secret.aws_access_key_id.id
-  secret_string = var.aws_access_key_id != "" ? var.aws_access_key_id : "dummy_value"
-}
-
-resource "aws_secretsmanager_secret" "aws_secret_access_key" {
-  name = "aws-secret-access-key"
-}
-
-resource "aws_secretsmanager_secret_version" "aws_secret_access_key" {
-  secret_id     = aws_secretsmanager_secret.aws_secret_access_key.id
-  secret_string = var.aws_secret_access_key != "" ? var.aws_secret_access_key : "dummy_value"
-}
-
-resource "aws_secretsmanager_secret" "pusher_app_id" {
-  name = "pusher-app-id"
-}
-
-resource "aws_secretsmanager_secret_version" "pusher_app_id" {
-  secret_id     = aws_secretsmanager_secret.pusher_app_id.id
-  secret_string = var.pusher_app_id
-}
-
-resource "aws_secretsmanager_secret" "pusher_app_key" {
-  name = "pusher-app-key"
-}
-
-resource "aws_secretsmanager_secret_version" "pusher_app_key" {
-  secret_id     = aws_secretsmanager_secret.pusher_app_key.id
-  secret_string = var.pusher_app_key
-}
-
-resource "aws_secretsmanager_secret" "pusher_app_secret" {
-  name = "pusher-app-secret"
-}
-
-resource "aws_secretsmanager_secret_version" "pusher_app_secret" {
-  secret_id     = aws_secretsmanager_secret.pusher_app_secret.id
-  secret_string = var.pusher_app_secret
-}
-
 # CloudWatch Logs Group
 resource "aws_cloudwatch_log_group" "ecs_logs" {
   name              = "/ecs/app-task"
@@ -613,5 +618,10 @@ variable "pusher_app_key" {
 
 variable "pusher_app_secret" {
   description = "Pusher App Secret"
+  type        = string
+}
+
+variable "next_public_api_url" {
+  description = "Public API URL for Next.js"
   type        = string
 }
