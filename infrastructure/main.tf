@@ -128,7 +128,7 @@ resource "aws_ecr_repository" "nginx" {
   name = "nginx"
 }
 
-# ECSタスク定義の作成
+# ECSタスク定義の作成（修正版）
 resource "aws_ecs_task_definition" "app" {
   family                   = "app-task"
   network_mode             = "awsvpc"
@@ -185,6 +185,12 @@ resource "aws_ecs_task_definition" "app" {
           awslogs-stream-prefix = "laravel"
         }
       }
+      mountPoints = [
+        {
+          sourceVolume  = "app-storage"
+          containerPath = "/var/www/html/storage"
+        }
+      ]
     },
     {
       name      = "nextjs-app"
@@ -226,6 +232,18 @@ resource "aws_ecs_task_definition" "app" {
           awslogs-stream-prefix = "nginx"
         }
       }
+      mountPoints = [
+        {
+          sourceVolume  = "app-storage"
+          containerPath = "/var/www/html/storage"
+        }
+      ]
+      dependsOn = [
+        {
+          containerName = "laravel-app"
+          condition     = "START"
+        }
+      ]
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
         interval    = 30
@@ -235,6 +253,10 @@ resource "aws_ecs_task_definition" "app" {
       }
     }
   ])
+
+  volume {
+    name = "app-storage"
+  }
 }
 
 # ECSサービスの作成

@@ -327,7 +327,7 @@ jobs:
           name: Build Next.js Docker Image
           working_directory: ~/project
           command: |
-            docker build -t nextjs-app:latest -f front/Dockerfile .
+            docker build -t nextjs-app:latest -f front/Dockerfile.prod .
 
       - run:
           name: Build Nginx Docker Image
