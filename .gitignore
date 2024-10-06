@@ -3,3 +3,7 @@
 .idea/
 .vscode/
 routes.txt
+infrastructure/terraform.tfstate
+infrastructure/terraform.tfstate.backup
+infrastructure/.terraform/
+infrastructure/terraform.tfvars
