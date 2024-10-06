@@ -1,90 +1,92 @@
+# AWSプロバイダーの設定
 provider "aws" {
-  region     = "ap-northeast-1"
-  access_key = var.aws_access_key_id == "" ? null : var.aws_access_key_id
-  secret_key = var.aws_secret_access_key == "" ? null : var.aws_secret_access_key
+  region = var.aws_region
 }
 
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.0"
-    }
-  }
-  backend "s3" {
-    bucket = "online-flower-crm-bucket"
-    key    = "terraform/state"
-    region = "ap-northeast-1"
-  }
+provider "aws" {
+  alias  = "us-east-1"
+  region = "us-east-1"
 }
 
-# VPCの作成
+# VPC設定
 resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_support   = true
+  cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
+  enable_dns_support   = true
+
   tags = {
-    Name = "main-vpc"
+    Name = "${var.project_name}-vpc"
   }
 }
 
-# インターネットゲートウェイの作成
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
+# パブリックサブネット
+resource "aws_subnet" "public" {
+  count                   = 2
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch = true
+
   tags = {
-    Name = "main-igw"
+    Name = "${var.project_name}-public-subnet-${count.index + 1}"
   }
 }
 
-# ルートテーブルの作成
-resource "aws_route_table" "main" {
+# プライベートサブネット
+resource "aws_subnet" "private" {
+  count             = 2
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+
+  tags = {
+    Name = "${var.project_name}-private-subnet-${count.index + 1}"
+  }
+}
+
+# インターネットゲートウェイ
+resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-igw"
+  }
+}
+
+# パブリックルートテーブル
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+    gateway_id = aws_internet_gateway.main.id
   }
+
   tags = {
-    Name = "main-route-table"
+    Name = "${var.project_name}-public-rt"
   }
 }
 
-# サブネットの作成（2つのAZに分散）
-resource "aws_subnet" "subnet_a" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "ap-northeast-1a"
-  tags = {
-    Name = "main-subnet-a"
-  }
+# パブリックサブネットとルートテーブルの関連付け
+resource "aws_route_table_association" "public" {
+  count          = 2
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
 }
 
-resource "aws_subnet" "subnet_b" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "ap-northeast-1c"
-  tags = {
-    Name = "main-subnet-b"
-  }
+# 利用可能なAZのデータソース
+data "aws_availability_zones" "available" {
+  state = "available"
 }
 
-# サブネットにルートテーブルを関連付ける
-resource "aws_route_table_association" "subnet_a_association" {
-  subnet_id      = aws_subnet.subnet_a.id
-  route_table_id = aws_route_table.main.id
-}
-
-resource "aws_route_table_association" "subnet_b_association" {
-  subnet_id      = aws_subnet.subnet_b.id
-  route_table_id = aws_route_table.main.id
-}
-
-# ECSタスク用のセキュリティグループ
-resource "aws_security_group" "ecs_sg" {
-  name        = "ecs-sg"
-  description = "Security group for ECS tasks"
+# ALB Security Group
+resource "aws_security_group" "alb" {
+  name        = "${var.project_name}-alb-sg"
+  description = "Security group for ALB"
   vpc_id      = aws_vpc.main.id
 
   ingress {
+    description = "Allow HTTP from anywhere"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -92,6 +94,7 @@ resource "aws_security_group" "ecs_sg" {
   }
 
   ingress {
+    description = "Allow HTTPS from anywhere"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -106,282 +109,87 @@ resource "aws_security_group" "ecs_sg" {
   }
 
   tags = {
-    Name = "ecs-sg"
+    Name = "${var.project_name}-alb-sg"
   }
 }
 
-# ECSクラスタの作成
-resource "aws_ecs_cluster" "main" {
-  name = "ecs-cluster"
-}
+# MySQL RDS インスタンス
+resource "aws_db_instance" "mysql" {
+  identifier        = "${var.project_name}-mysql"
+  engine            = "mysql"
+  engine_version    = "8.0"
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+  storage_type      = "gp2"
 
-# ECRリポジトリの作成
-resource "aws_ecr_repository" "laravel" {
-  name = "laravel-app"
-}
+  db_name  = var.db_name
+  username = var.db_username
+  password = var.db_password
 
-resource "aws_ecr_repository" "nextjs" {
-  name = "nextjs-app"
-}
+  vpc_security_group_ids = [aws_security_group.db.id]
+  db_subnet_group_name   = aws_db_subnet_group.mysql.name
 
-resource "aws_ecr_repository" "nginx" {
-  name = "nginx"
-}
+  backup_retention_period = 7
+  skip_final_snapshot     = true
+  multi_az                = false
 
-# Secrets Manager に保存された本番環境の秘密情報
-resource "aws_secretsmanager_secret" "db_password" {
-  name = "db-password"
-}
-
-resource "aws_secretsmanager_secret_version" "db_password" {
-  secret_id     = aws_secretsmanager_secret.db_password.id
-  secret_string = var.db_password
-}
-
-resource "aws_secretsmanager_secret" "app_key" {
-  name = "app-key"
-}
-
-resource "aws_secretsmanager_secret_version" "app_key" {
-  secret_id     = aws_secretsmanager_secret.app_key.id
-  secret_string = var.app_key
-}
-
-resource "aws_secretsmanager_secret" "redis_password" {
-  name = "redis-password"
-}
-
-resource "aws_secretsmanager_secret_version" "redis_password" {
-  secret_id     = aws_secretsmanager_secret.redis_password.id
-  secret_string = var.redis_password
-}
-
-resource "aws_secretsmanager_secret" "aws_access_key_id" {
-  name = "aws-access-key-id"
-}
-
-resource "aws_secretsmanager_secret_version" "aws_access_key_id" {
-  secret_id     = aws_secretsmanager_secret.aws_access_key_id.id
-  secret_string = var.aws_access_key_id
-}
-
-resource "aws_secretsmanager_secret" "aws_secret_access_key" {
-  name = "aws-secret-access-key"
-}
-
-resource "aws_secretsmanager_secret_version" "aws_secret_access_key" {
-  secret_id     = aws_secretsmanager_secret.aws_secret_access_key.id
-  secret_string = var.aws_secret_access_key
-}
-
-resource "aws_secretsmanager_secret" "pusher_app_id" {
-  name = "pusher-app-id"
-}
-
-resource "aws_secretsmanager_secret_version" "pusher_app_id" {
-  secret_id     = aws_secretsmanager_secret.pusher_app_id.id
-  secret_string = var.pusher_app_id
-}
-
-resource "aws_secretsmanager_secret" "pusher_app_key" {
-  name = "pusher-app-key"
-}
-
-resource "aws_secretsmanager_secret_version" "pusher_app_key" {
-  secret_id     = aws_secretsmanager_secret.pusher_app_key.id
-  secret_string = var.pusher_app_key
-}
-
-resource "aws_secretsmanager_secret" "pusher_app_secret" {
-  name = "pusher-app-secret"
-}
-
-resource "aws_secretsmanager_secret_version" "pusher_app_secret" {
-  secret_id     = aws_secretsmanager_secret.pusher_app_secret.id
-  secret_string = var.pusher_app_secret
-}
-
-# NEXT_PUBLIC_API_URLをSecrets Managerに保存
-resource "aws_secretsmanager_secret" "next_public_api_url" {
-  name = "next-public-api-url"
-}
-
-resource "aws_secretsmanager_secret_version" "next_public_api_url_version" {
-  secret_id     = aws_secretsmanager_secret.next_public_api_url.id
-  secret_string = var.next_public_api_url
-}
-
-# ECSタスク定義の作成
-resource "aws_ecs_task_definition" "app" {
-  family                   = "app-task"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "laravel-app"
-      image     = "${aws_ecr_repository.laravel.repository_url}:latest"
-      cpu       = 256
-      memory    = 512
-      essential = true
-      portMappings = [{
-        containerPort = 9000
-        hostPort      = 9000
-      }]
-      environment = [
-        { name = "APP_ENV", value = "production" },
-        { name = "APP_DEBUG", value = "false" },  # 本番環境なのでデバッグは無効
-        { name = "APP_URL", value = "https://www.tkb-tech.com" },
-        { name = "DB_CONNECTION", value = "mysql" },
-        { name = "DB_HOST", value = aws_db_instance.default.address },
-        { name = "DB_PORT", value = "3306" },
-        { name = "DB_DATABASE", value = var.db_name },
-        { name = "DB_USERNAME", value = var.db_username },
-        { name = "BROADCAST_DRIVER", value = "pusher" },
-        { name = "CACHE_DRIVER", value = "redis" },
-        { name = "FILESYSTEM_DISK", value = "s3" },
-        { name = "QUEUE_CONNECTION", value = "redis" },
-        { name = "SESSION_DRIVER", value = "redis" },
-        { name = "AWS_DEFAULT_REGION", value = "ap-northeast-1" },
-        { name = "AWS_BUCKET", value = var.s3_bucket_name },
-        { name = "PUSHER_APP_CLUSTER", value = "ap3" }
-      ]
-      secrets = [
-        { name = "APP_KEY", valueFrom = aws_secretsmanager_secret.app_key.arn },
-        { name = "DB_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password.arn },
-               { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_password.arn },
-        { name = "AWS_ACCESS_KEY_ID", valueFrom = aws_secretsmanager_secret.aws_access_key_id.arn },
-        { name = "AWS_SECRET_ACCESS_KEY", valueFrom = aws_secretsmanager_secret.aws_secret_access_key.arn },
-        { name = "PUSHER_APP_ID", valueFrom = aws_secretsmanager_secret.pusher_app_id.arn },
-        { name = "PUSHER_APP_KEY", valueFrom = aws_secretsmanager_secret.pusher_app_key.arn },
-        { name = "PUSHER_APP_SECRET", valueFrom = aws_secretsmanager_secret.pusher_app_secret.arn }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = "/ecs/app-task"
-          awslogs-region        = "ap-northeast-1"
-          awslogs-stream-prefix = "laravel"
-        }
-      }
-      mountPoints = [
-        {
-          sourceVolume  = "app-storage"
-          containerPath = "/var/www/html/storage"
-        }
-      ]
-    },
-    {
-      name      = "nextjs-app"
-      image     = "${aws_ecr_repository.nextjs.repository_url}:latest"
-      cpu       = 128
-      memory    = 256
-      essential = true
-      portMappings = [{
-        containerPort = 3000
-        hostPort      = 3000
-      }]
-      environment = []
-      secrets = [
-        { name = "NEXT_PUBLIC_API_URL", valueFrom = aws_secretsmanager_secret.next_public_api_url.arn }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = "/ecs/app-task"
-          awslogs-region        = "ap-northeast-1"
-          awslogs-stream-prefix = "nextjs"
-        }
-      }
-    },
-    {
-      name      = "nginx"
-      image     = "${aws_ecr_repository.nginx.repository_url}:latest"
-      cpu       = 128
-      memory    = 256
-      essential = true
-      portMappings = [{
-        containerPort = 80
-        hostPort      = 80
-      }]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = "/ecs/app-task"
-          awslogs-region        = "ap-northeast-1"
-          awslogs-stream-prefix = "nginx"
-        }
-      }
-      mountPoints = [
-        {
-          sourceVolume  = "app-storage"
-          containerPath = "/var/www/html/storage"
-        }
-      ]
-      dependsOn = [
-        {
-          containerName = "laravel-app"
-          condition     = "START"
-        }
-      ]
-      healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
-      }
-    }
-  ])
-
-  volume {
-    name = "app-storage"
+  tags = {
+    Name = "${var.project_name}-mysql"
   }
 }
 
-# ECSサービスの作成
-resource "aws_ecs_service" "app_service" {
-  name            = "app-service"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
+# データベース用サブネットグループ
+resource "aws_db_subnet_group" "mysql" {
+  name       = "${var.project_name}-mysql-subnet-group"
+  subnet_ids = aws_subnet.private[*].id
 
-  network_configuration {
-    subnets         = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
-    security_groups = [aws_security_group.ecs_sg.id]
-    assign_public_ip = true
+  tags = {
+    Name = "${var.project_name}-mysql-subnet-group"
   }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.main.arn
-    container_name   = "nginx"
-    container_port   = 80
-  }
-
-  depends_on = [aws_lb_listener.http, aws_lb_listener.https]
 }
 
-# ALBの作成
+# データベース用セキュリティグループ
+resource "aws_security_group" "db" {
+  name        = "${var.project_name}-db-sg"
+  description = "Security group for MySQL RDS"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Allow MySQL traffic from ALB"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project_name}-db-sg"
+  }
+}
+
+# ALB リソース
 resource "aws_lb" "main" {
-  name               = "main-lb"
+  name               = "${var.project_name}-alb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.ecs_sg.id]
-  subnets            = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = aws_subnet.public[*].id
 
   enable_deletion_protection = false
 
   tags = {
-    Name = "main-lb"
+    Name = "${var.project_name}-alb"
   }
 }
 
-# ALBリスナー（HTTP）
+# ALB リスナー (HTTP)
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
@@ -397,231 +205,218 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# ALBリスナー（HTTPS）
+# Route 53 Hosted Zone
+resource "aws_route53_zone" "main" {
+  name = var.domain_name
+
+  tags = {
+    Name = "${var.project_name}-zone"
+  }
+}
+
+# ALBに向けたAレコード (API)
+resource "aws_route53_record" "api" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "api.${var.domain_name}"
+  type    = "A"
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
+# ACM 証明書のリクエスト (API)
+resource "aws_acm_certificate" "api_cert" {
+  domain_name       = "api.${var.domain_name}"
+  validation_method = "DNS"
+
+  tags = {
+    Name = "${var.project_name}-api-cert"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Route 53でのDNS検証を設定 (API)
+resource "aws_route53_record" "api_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.api_cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  zone_id = aws_route53_zone.main.zone_id
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 60
+  records = [each.value.record]
+}
+
+# ACM証明書の検証完了待ち (API)
+resource "aws_acm_certificate_validation" "api_cert_validation" {
+  certificate_arn         = aws_acm_certificate.api_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.api_cert_validation : record.fqdn]
+}
+
+# ALB リスナー (HTTPS)
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = "arn:aws:acm:ap-northeast-1:699475951464:certificate/8ce690d8-3909-405c-aa46-f64ba354cc2e"
+  certificate_arn   = aws_acm_certificate_validation.api_cert_validation.certificate_arn
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.main.arn
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "OK"
+      status_code  = "200"
+    }
+  }
+}
+
+# フロントエンド用S3バケット
+resource "aws_s3_bucket" "front" {
+  bucket = "${var.project_name}-front"
+
+  tags = {
+    Name = "${var.project_name}-front-bucket"
+  }
+}
+
+# S3バケットのパブリックアクセスブロック
+resource "aws_s3_bucket_public_access_block" "front" {
+  bucket = aws_s3_bucket.front.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# CloudFront OAI
+resource "aws_cloudfront_origin_access_identity" "front" {
+  comment = "OAI for ${var.project_name} frontend"
+}
+
+# S3バケットポリシー
+resource "aws_s3_bucket_policy" "front" {
+  bucket = aws_s3_bucket.front.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect    = "Allow",
+        Principal = { AWS = aws_cloudfront_origin_access_identity.front.iam_arn },
+        Action    = "s3:GetObject",
+        Resource  = "${aws_s3_bucket.front.arn}/*"
+      }
+    ]
+  })
+}
+
+# ACM 証明書 for front (us-east-1リージョンに作成)
+resource "aws_acm_certificate" "front_cert" {
+  provider          = aws.us-east-1
+  domain_name       = "front.${var.domain_name}"
+  validation_method = "DNS"
+
+  tags = {
+    Name = "${var.project_name}-front-cert"
   }
 
   lifecycle {
-    ignore_changes = [default_action]
+    create_before_destroy = true
   }
 }
 
-# ALBターゲットグループ
-resource "aws_lb_target_group" "main" {
-  name        = "main-targets"
-  port        = 80
-  protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
-  target_type = "ip"
-
-  health_check {
-    healthy_threshold   = "3"
-    interval            = "30"
-    protocol            = "HTTP"
-    matcher             = "200"
-    timeout             = "5"
-    path                = "/"
-    unhealthy_threshold = "2"
+# DNS検証 for front
+resource "aws_route53_record" "front_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.front_cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
   }
+
+  zone_id = aws_route53_zone.main.zone_id
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 60
+  records = [each.value.record]
 }
 
-# IAMロールの作成
-resource "aws_iam_role" "ecs_task_execution_role" {
-  name = "ecs-task-execution-role"
+# ACM証明書の検証完了待ち (Front)
+resource "aws_acm_certificate_validation" "front_cert_validation" {
+  provider                = aws.us-east-1
+  certificate_arn         = aws_acm_certificate.front_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.front_cert_validation : record.fqdn]
+}
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
+# CloudFront distribution for front
+resource "aws_cloudfront_distribution" "front" {
+  enabled             = true
+  default_root_object = "index.html"
+
+  origin {
+    domain_name = aws_s3_bucket.front.bucket_regional_domain_name
+    origin_id   = "S3-${aws_s3_bucket.front.id}"
+
+    s3_origin_config {
+      origin_access_identity = aws_cloudfront_origin_access_identity.front.cloudfront_access_identity_path
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-${aws_s3_bucket.front.id}"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
       }
-    ]
-  })
-}
+    }
 
-# IAMロールポリシーのアタッチ
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
-  role       = aws_iam_role.ecs_task_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
+    # ここでTTL値を設定
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
 
-# ECSタスクロールの作成
-resource "aws_iam_role" "ecs_task_role" {
-  name = "ecs-task-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ecs-tasks.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-# ECSタスクロールにポリシーをアタッチ
-resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"  # S3へのフルアクセスを許可
-}
-
-# RDSインスタンスの作成
-resource "aws_db_instance" "default" {
-  identifier           = "main-rds"
-  allocated_storage    = 20
-  storage_type         = "gp2"
-  engine               = "mysql"
-  engine_version       = "8.0"
-  instance_class       = "db.t3.micro"
-  db_name              = var.db_name
-  username             = var.db_username
-  password             = var.db_password
-  parameter_group_name = "default.mysql8.0"
-  skip_final_snapshot  = true
-
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-
-  tags = {
-    Name = "main-rds"
-  }
-}
-
-# RDS用のセキュリティグループ
-resource "aws_security_group" "rds_sg" {
-  name        = "rds-sg"
-  description = "Security group for RDS"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_sg.id]
+    viewer_protocol_policy = "redirect-to-https"
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
   }
 
-  tags = {
-    Name = "rds-sg"
+  viewer_certificate {
+    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn
+    ssl_support_method  = "sni-only"
   }
+
+  aliases = ["front.${var.domain_name}"]
 }
 
-# RDS用のサブネットグループ
-resource "aws_db_subnet_group" "main" {
-  name       = "main-db-subnet-group"
-  subnet_ids = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
-
-  tags = {
-    Name = "main-db-subnet-group"
-  }
-}
-
-# Route 53レコード
-resource "aws_route53_record" "www" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "www.tkb-tech.com"
+# Route 53 Aレコード for front
+resource "aws_route53_record" "front" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "front.${var.domain_name}"
   type    = "A"
-
   alias {
-    name                   = aws_lb.main.dns_name
-    zone_id                = aws_lb.main.zone_id
-    evaluate_target_health = true
+    name                   = aws_cloudfront_distribution.front.domain_name
+    zone_id                = aws_cloudfront_distribution.front.hosted_zone_id
+    evaluate_target_health = false
   }
-}
-
-# 既存のRoute 53ゾーンを参照
-data "aws_route53_zone" "main" {
-  name = "tkb-tech.com"
-}
-
-# CloudWatch Logs Group
-resource "aws_cloudwatch_log_group" "ecs_logs" {
-  name              = "/ecs/app-task"
-  retention_in_days = 30
-}
-
-# 変数の定義
-variable "db_name" {
-  description = "Name of the database"
-  type        = string
-}
-
-variable "db_username" {
-  description = "Username for the database"
-  type        = string
-}
-
-variable "db_password" {
-  description = "Password for the database"
-  type        = string
-}
-
-variable "app_key" {
-  description = "Laravel APP_KEY"
-  type        = string
-}
-
-variable "redis_password" {
-  description = "Redis password"
-  type        = string
-}
-
-variable "aws_access_key_id" {
-  description = "AWS Access Key ID"
-  type        = string
-  default     = ""
-}
-
-variable "aws_secret_access_key" {
-  description = "AWS Secret Access Key"
-  type        = string
-  default     = ""
-}
-
-variable "s3_bucket_name" {
-  description = "S3 bucket name for file storage"
-  type        = string
-}
-
-variable "pusher_app_id" {
-  description = "Pusher App ID"
-  type        = string
-}
-
-variable "pusher_app_key" {
-  description = "Pusher App Key"
-  type        = string
-}
-
-variable "pusher_app_secret" {
-  description = "Pusher App Secret"
-  type        = string
-}
-
-variable "next_public_api_url" {
-  description = "Public API URL for Next.js"
-  type        = string
 }
