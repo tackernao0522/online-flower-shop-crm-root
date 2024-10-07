@@ -227,16 +227,28 @@ jobs:
             pwd
             ls -la
 
-            # Debug: Print contents of api and nginx directories
-            ls -la api
+            # Debug: Print contents of relevant directories
+            echo "Contents of api/infra/php:"
+            ls -la api/infra/php
+            echo "Contents of api/infra/nginx:"
             ls -la api/infra/nginx
+
+            # Ensure all necessary files exist
+            if [ ! -f api/infra/php/php.prod.ini ]; then
+              echo "Error: php.prod.ini not found"
+              exit 1
+            fi
+            if [ ! -f api/infra/php/docker-entrypoint.prod.sh ]; then
+              echo "Error: docker-entrypoint.prod.sh not found"
+              exit 1
+            fi
 
             # Build Docker image for API
             docker build -t ofcrm-app:${CIRCLE_SHA1} \
               --build-arg NGINX_CONF_PATH=./nginx/nginx.prod.conf \
               --build-arg DEFAULT_CONF_PATH=./nginx/default.prod.conf \
-              --build-arg PHP_INI_PATH=./php.prod.ini \
-              --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
+              --build-arg PHP_INI_PATH=./php/php.prod.ini \
+              --build-arg ENTRYPOINT_SCRIPT_PATH=./php/docker-entrypoint.prod.sh \
               -f ./api/infra/php/Dockerfile.prod ./api/infra
 
             # Tag Docker image
