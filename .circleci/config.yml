@@ -267,7 +267,7 @@ jobs:
             number_of_tags_in_ecr=0
 
             docker_tag_args=""
-            IFS="," read -ra DOCKER_TAGS \<<- "${CIRCLE_SHA1}"
+            IFS="," read -ra DOCKER_TAGS \<< "${CIRCLE_SHA1}"
             for tag in "${DOCKER_TAGS[@]}"; do
               if [ "false" = "true" ]; then
                 docker_tag_exists_in_ecr=$(aws ecr describe-images --profile default --registry-id $registry_id --repository-name ofcrm-app --query "contains(imageDetails[].imageTags[], '$tag')")
