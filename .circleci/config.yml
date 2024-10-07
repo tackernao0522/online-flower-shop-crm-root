@@ -249,7 +249,7 @@ jobs:
               --build-arg DEFAULT_CONF_PATH=./nginx/default.prod.conf \
               --build-arg PHP_INI_PATH=./php/php.prod.ini \
               --build-arg ENTRYPOINT_SCRIPT_PATH=./php/docker-entrypoint.prod.sh \
-              -f ./api/infra/php/Dockerfile.prod ./api/infra
+              -f ./api/infra/php/Dockerfile.prod ./api
 
             # Tag Docker image
             docker tag ofcrm-app:${CIRCLE_SHA1} ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
