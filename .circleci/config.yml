@@ -251,13 +251,18 @@ jobs:
       - setup_remote_docker
       - aws-cli/setup
       - run:
+          name: Set ECR URL
+          command: |
+            echo "export ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $BASH_ENV
+            source $BASH_ENV
+      - run:
           name: AWS ECR Login
           command: |
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
       - aws-ecr/build-and-push-image:
-          account-url: AWS_ACCOUNT_ID
+          account-url: ${ECR_ENDPOINT}
           repo: ofcrm-app
-          region: AWS_REGION
+          region: ${AWS_REGION}
           tag: ${CIRCLE_SHA1}
           path: ./api/infra/php
           dockerfile: Dockerfile.prod
@@ -266,12 +271,10 @@ jobs:
             --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf
             --build-arg PHP_INI_PATH=./php.prod.ini
             --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh
-
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
           template: basic_fail_1
-
       - slack/notify:
           event: pass
           channel: ${SLACK_CHANNEL_ID}
