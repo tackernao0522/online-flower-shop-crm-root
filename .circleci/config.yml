@@ -181,7 +181,8 @@ jobs:
               echo "MySQL Version:"
               mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
               echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user,
+                            host FROM mysql.user;"
               echo "Database connection details:"
               php artisan tinker --execute="print_r(config('database.connections.mysql'));"
               echo "Attempting connection:"
@@ -266,7 +267,7 @@ jobs:
             number_of_tags_in_ecr=0
 
             docker_tag_args=""
-            IFS="," read -ra DOCKER_TAGS <<< "${CIRCLE_SHA1}"
+            IFS="," read -ra DOCKER_TAGS \<<- "${CIRCLE_SHA1}"
             for tag in "${DOCKER_TAGS[@]}"; do
               if [ "false" = "true" ]; then
                 docker_tag_exists_in_ecr=$(aws ecr describe-images --profile default --registry-id $registry_id --repository-name ofcrm-app --query "contains(imageDetails[].imageTags[], '$tag')")
