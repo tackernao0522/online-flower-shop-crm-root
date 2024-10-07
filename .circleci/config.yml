@@ -2,9 +2,12 @@ version: 2.1
 
 orbs:
   node: circleci/node@5.0.2
+  slack: circleci/slack@4.1.0
+  aws-ecr: circleci/aws-ecr@6.15.3
+  aws-ecs: circleci/aws-ecs@2.1.0
 
 jobs:
-  build:
+  build-and-test:
     machine:
       image: ubuntu-2204:current
 
@@ -229,9 +232,66 @@ jobs:
               npm test
             fi
 
+  build-and-push-image:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - setup_remote_docker
+      - aws-ecr/build-and-push-image:
+          account-url: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+          repo: ofcrm-app
+          region: ${AWS_REGION}
+          tag: ${CIRCLE_SHA1}
+          path: ./api/infra/php
+          dockerfile: Dockerfile.prod
+          extra-build-args: |
+            --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf
+            --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf
+            --build-arg PHP_INI_PATH=./php.prod.ini
+            --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh
+
+  deploy-to-ecs:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - aws-ecs/deploy-service-update:
+          requires:
+            - build-and-push-image
+          family: ofcrm-app
+          cluster-name: ofcrm-cluster
+          service-name: ofcrm-service
+          container-image-name-updates: "ofcrm-app=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
+
 workflows:
   version: 2
-  build_and_test:
+  build-test-deploy:
     jobs:
-      - build:
-          context: my-context
+      - build-and-test
+      - build-and-push-image:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
+      - deploy-to-ecs:
+          requires:
+            - build-and-push-image
+          filters:
+            branches:
+              only: main
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID}
+          requires:
+            - build-and-test
+            - build-and-push-image
+            - deploy-to-ecs
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID}
+          requires:
+            - build-and-test
+            - build-and-push-image
+            - deploy-to-ecs
+    context: my-context
