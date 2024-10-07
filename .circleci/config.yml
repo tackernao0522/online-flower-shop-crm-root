@@ -286,42 +286,30 @@ workflows:
     jobs:
       - build-and-test:
           context: my-context
-        build-and-push-image:
-    docker:
-      - image: cimg/base:stable
-    steps:
-      - checkout
-      - setup_remote_docker
-      - aws-cli/setup
-      - run:
-          name: Set ECR URL
-          command: |
-            echo "export ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $BASH_ENV
-            source $BASH_ENV
-      - run:
-          name: AWS ECR Login
-          command: |
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
-      - aws-ecr/build-and-push-image:
-          account-url: ECR_ENDPOINT # 環境変数名そのものを指定
-          repo: ofcrm-app
-          region: AWS_REGION # 環境変数名そのものを指定
-          tag: ${CIRCLE_SHA1}
-          path: ./api/infra/php
-          dockerfile: Dockerfile.prod
-          extra-build-args: |
-            --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf
-            --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf
-            --build-arg PHP_INI_PATH=./php.prod.ini
-            --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh
-      - slack/notify:
-          event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          template: basic_fail_1
-      - slack/notify:
-          event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          template: success_tagged_deploy_1
+      - build-and-push-image:
+          context: my-context
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
+      - aws-ecs/deploy-service-update:
+          context: my-context
+          requires:
+            - build-and-push-image
+          family: ofcrm-app
+          cluster-name: ofcrm-cluster
+          service-name: ofcrm-service
+          container-image-name-updates: "ofcrm-app=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
+          post-steps:
+            - slack/notify:
+                event: fail
+                channel: ${SLACK_CHANNEL_ID}
+                template: basic_fail_1
+            - slack/notify:
+                event: pass
+                channel: ${SLACK_CHANNEL_ID}
+                template: success_tagged_deploy_1
           filters:
             branches:
               only: main
