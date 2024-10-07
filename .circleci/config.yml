@@ -258,6 +258,9 @@ jobs:
             # Login to ECR
             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_ENDPOINT}
 
+            # Move to the correct directory
+            cd ~/project
+
             # Build Docker image
             docker build -t ofcrm-app:${CIRCLE_SHA1} \
               --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
