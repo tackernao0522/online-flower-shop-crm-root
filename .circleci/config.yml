@@ -247,6 +247,11 @@ jobs:
       - image: cimg/base:stable
     steps:
       - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
       - run:
@@ -265,13 +270,21 @@ jobs:
             # Debug: Print contents of api directory
             ls -la api
 
+            # Debug: Find Dockerfile
+            find . -name Dockerfile.prod
+
+            # Assuming Dockerfile.prod is found, adjust the path accordingly
+            DOCKERFILE_PATH=$(find . -name Dockerfile.prod | head -n 1)
+            DOCKER_CONTEXT=$(dirname $DOCKERFILE_PATH)
+
+
             # Build Docker image
             docker build -t ofcrm-app:${CIRCLE_SHA1} \
               --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
               --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
               --build-arg PHP_INI_PATH=./php.prod.ini \
               --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
-              -f ./api/infra/php/Dockerfile.prod ./api/infra/php
+              -f $DOCKERFILE_PATH $DOCKER_CONTEXT
 
             # Tag Docker image
             docker tag ofcrm-app:${CIRCLE_SHA1} ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
