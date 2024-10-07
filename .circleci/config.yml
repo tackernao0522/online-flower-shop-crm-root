@@ -235,10 +235,12 @@ jobs:
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
+          template: basic_fail_1
 
       - slack/notify:
           event: pass
           channel: ${SLACK_CHANNEL_ID}
+          template: success_tagged_deploy_1
 
   build-and-push-image:
     docker:
@@ -262,10 +264,12 @@ jobs:
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
+          template: basic_fail_1
 
       - slack/notify:
           event: pass
           channel: ${SLACK_CHANNEL_ID}
+          template: success_tagged_deploy_1
 
 workflows:
   version: 2
@@ -292,9 +296,11 @@ workflows:
             - slack/notify:
                 event: fail
                 channel: ${SLACK_CHANNEL_ID}
+                template: basic_fail_1
             - slack/notify:
                 event: pass
                 channel: ${SLACK_CHANNEL_ID}
+                template: success_tagged_deploy_1
           filters:
             branches:
               only: main
