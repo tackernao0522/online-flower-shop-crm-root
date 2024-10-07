@@ -271,14 +271,17 @@ workflows:
   version: 2
   build-test-deploy:
     jobs:
-      - build-and-test
+      - build-and-test:
+          context: my-context
       - build-and-push-image:
+          context: my-context
           requires:
             - build-and-test
           filters:
             branches:
               only: main
       - aws-ecs/deploy-service-update:
+          context: my-context
           requires:
             - build-and-push-image
           family: ofcrm-app
@@ -295,4 +298,3 @@ workflows:
           filters:
             branches:
               only: main
-    context: my-context
