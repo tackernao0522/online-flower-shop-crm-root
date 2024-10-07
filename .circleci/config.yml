@@ -5,6 +5,7 @@ orbs:
   slack: circleci/slack@4.1.0
   aws-ecr: circleci/aws-ecr@6.15.3
   aws-ecs: circleci/aws-ecs@2.1.0
+  aws-cli: circleci/aws-cli@2.0.3
 
 jobs:
   build-and-test:
@@ -248,6 +249,7 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+      - aws-cli/setup
       - run:
           name: AWS ECR Login
           command: |
