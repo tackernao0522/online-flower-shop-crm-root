@@ -215,6 +215,13 @@ jobs:
       - setup_remote_docker
       - aws-cli/setup
       - run:
+          name: Display directory structure
+          command: |
+            echo "Current directory:"
+            pwd
+            echo "Directory structure:"
+            tree -L 3 ./api
+      - run:
           name: Build and push Docker image to ECR
           command: |
             # Set ECR URL
