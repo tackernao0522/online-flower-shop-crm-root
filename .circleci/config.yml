@@ -227,16 +227,17 @@ jobs:
             pwd
             ls -la
 
-            # Debug: Print contents of api directory
+            # Debug: Print contents of api and nginx directories
             ls -la api
+            ls -la api/infra/nginx
 
             # Build Docker image for API
             docker build -t ofcrm-app:${CIRCLE_SHA1} \
-              --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
-              --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
+              --build-arg NGINX_CONF_PATH=./nginx/nginx.prod.conf \
+              --build-arg DEFAULT_CONF_PATH=./nginx/default.prod.conf \
               --build-arg PHP_INI_PATH=./php.prod.ini \
               --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
-              -f ./api/infra/php/Dockerfile.prod ./api/infra/php
+              -f ./api/infra/php/Dockerfile.prod ./api/infra
 
             # Tag Docker image
             docker tag ofcrm-app:${CIRCLE_SHA1} ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
