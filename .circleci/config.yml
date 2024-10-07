@@ -265,7 +265,7 @@ jobs:
           repo: ofcrm-app
           region: AWS_REGION
           tag: ${CIRCLE_SHA1}
-          path: ./projects/api/infra/php
+          path: ./api/infra/php
           dockerfile: Dockerfile.prod
           extra-build-args: |
             --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf
