@@ -181,7 +181,8 @@ jobs:
               echo "MySQL Version:"
               mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
               echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user,
+                            host FROM mysql.user;"
               echo "Database connection details:"
               php artisan tinker --execute="print_r(config('database.connections.mysql'));"
               echo "Attempting connection:"
@@ -260,9 +261,9 @@ jobs:
           command: |
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
       - aws-ecr/build-and-push-image:
-          account-url: ECR_ENDPOINT
+          account-url: $ECR_ENDPOINT
           repo: ofcrm-app
-          region: AWS_REGION
+          region: $AWS_REGION
           tag: ${CIRCLE_SHA1}
           path: ./api/infra/php
           dockerfile: Dockerfile.prod
