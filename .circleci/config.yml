@@ -3,9 +3,8 @@ version: 2.1
 orbs:
   node: circleci/node@5.0.2
   slack: circleci/slack@4.1.0
-  aws-ecr: circleci/aws-ecr@6.15.3
-  aws-ecs: circleci/aws-ecs@2.1.0
   aws-cli: circleci/aws-cli@2.0.3
+  aws-ecs: circleci/aws-ecs@2.1.0
 
 jobs:
   build-and-test:
@@ -181,8 +180,7 @@ jobs:
               echo "MySQL Version:"
               mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
               echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user,
-                            host FROM mysql.user;"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
               echo "Database connection details:"
               php artisan tinker --execute="print_r(config('database.connections.mysql'));"
               echo "Attempting connection:"
@@ -252,26 +250,27 @@ jobs:
       - setup_remote_docker
       - aws-cli/setup
       - run:
-          name: Set ECR URL
+          name: Build and push Docker image to ECR
           command: |
-            echo "export ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $BASH_ENV
-            source $BASH_ENV
-      - run:
-          name: AWS ECR Login
-          command: |
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
-      - aws-ecr/build-and-push-image:
-          account-url: ECR_ENDPOINT
-          repo: ofcrm-app
-          region: AWS_REGION
-          tag: ${CIRCLE_SHA1}
-          path: ./api/infra/php
-          dockerfile: Dockerfile.prod
-          extra-build-args: |
-            --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf
-            --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf
-            --build-arg PHP_INI_PATH=./php.prod.ini
-            --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh
+            # Set ECR URL
+            ECR_ENDPOINT="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+            # Login to ECR
+            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_ENDPOINT}
+
+            # Build Docker image
+            docker build -t ofcrm-app:${CIRCLE_SHA1} \
+              --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
+              --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
+              --build-arg PHP_INI_PATH=./php.prod.ini \
+              --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
+              -f ./api/infra/php/Dockerfile.prod ./api/infra/php
+
+            # Tag Docker image
+            docker tag ofcrm-app:${CIRCLE_SHA1} ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
+
+            # Push Docker image to ECR
+            docker push ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
