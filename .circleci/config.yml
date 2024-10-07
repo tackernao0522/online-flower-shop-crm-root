@@ -232,6 +232,14 @@ jobs:
               npm test
             fi
 
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID}
+
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID}
+
   build-and-push-image:
     docker:
       - image: cimg/base:stable
@@ -251,6 +259,14 @@ jobs:
             --build-arg PHP_INI_PATH=./php.prod.ini
             --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh
 
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID}
+
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID}
+
 workflows:
   version: 2
   build-test-deploy:
@@ -269,21 +285,14 @@ workflows:
           cluster-name: ofcrm-cluster
           service-name: ofcrm-service
           container-image-name-updates: "ofcrm-app=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
+          post-steps:
+            - slack/notify:
+                event: fail
+                channel: ${SLACK_CHANNEL_ID}
+            - slack/notify:
+                event: pass
+                channel: ${SLACK_CHANNEL_ID}
           filters:
             branches:
               only: main
-      - slack/notify:
-          event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          requires:
-            - build-and-test
-            - build-and-push-image
-            - aws-ecs/deploy-service-update
-      - slack/notify:
-          event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          requires:
-            - build-and-test
-            - build-and-push-image
-            - aws-ecs/deploy-service-update
     context: my-context
