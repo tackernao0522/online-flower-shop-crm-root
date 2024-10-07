@@ -216,7 +216,7 @@ jobs:
           name: Install Node.js dependencies
           working_directory: ~/project/front
           command: |
-                        if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
+            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
               npm install
             fi
 
