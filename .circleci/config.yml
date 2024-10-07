@@ -207,7 +207,8 @@ jobs:
 
       - node/install:
           node-version: "18.17.0"
-            - restore_cache:
+
+      - restore_cache:
           keys:
             - node-v1-{{ checksum "~/project/front/package-lock.json" }}
             - node-v1-
