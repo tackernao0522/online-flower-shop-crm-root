@@ -248,6 +248,10 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+      - run:
+          name: AWS ECR Login
+          command: |
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
       - aws-ecr/build-and-push-image:
           account-url: AWS_ACCOUNT_ID
           repo: ofcrm-app
