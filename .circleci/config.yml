@@ -260,38 +260,18 @@ jobs:
           name: AWS ECR Login
           command: |
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
-      - run:
-          name: Build and Push Docker Image
-          command: |
-            registry_id=$(echo $ECR_ENDPOINT | sed "s;\..*;;g")
-            number_of_tags_in_ecr=0
-
-            docker_tag_args=""
-            DOCKER_TAGS=(${CIRCLE_SHA1//,/ })  # リストを作成
-            for tag in "${DOCKER_TAGS[@]}"; do
-              if [ "false" = "true" ]; then
-                docker_tag_exists_in_ecr=$(aws ecr describe-images --profile default --registry-id $registry_id --repository-name ofcrm-app --query "contains(imageDetails[].imageTags[], '$tag')")
-                if [ "$docker_tag_exists_in_ecr" = "true" ]; then
-                  docker pull $ECR_ENDPOINT/ofcrm-app:${tag}
-                  let "number_of_tags_in_ecr+=1"
-                fi
-              fi
-              docker_tag_args="$docker_tag_args -t $ECR_ENDPOINT/ofcrm-app:$tag"
-            done
-
-            # Dockerタグ引数をデバッグ出力
-            echo "Docker tag arguments: $docker_tag_args"
-
-            if [ "false" = "false" ] || [ "false" = "true" -a $number_of_tags_in_ecr -lt ${#DOCKER_TAGS[@]} ]; then
-              docker build \
-                --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
-                --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
-                --build-arg PHP_INI_PATH=./php.prod.ini \
-                --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
-                -f ./api/infra/php/Dockerfile.prod \
-                $docker_tag_args \
-                ./api/infra/php
-            fi
+      - aws-ecr/build-and-push-image:
+          account-url: ECR_ENDPOINT
+          repo: ofcrm-app
+          region: AWS_REGION
+          tag: ${CIRCLE_SHA1}
+          path: ./api/infra/php
+          dockerfile: Dockerfile.prod
+          extra-build-args: |
+            --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf
+            --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf
+            --build-arg PHP_INI_PATH=./php.prod.ini
+            --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
