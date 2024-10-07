@@ -3,8 +3,8 @@ version: 2.1
 orbs:
   node: circleci/node@5.0.2
   slack: circleci/slack@4.1.0
-  aws-ecr: circleci/aws-ecr@6.15.3
-  aws-ecs: circleci/aws-ecs@2.1.0
+  aws-ecr: circleci/aws-ecr@8.1.2
+  aws-ecs: circleci/aws-cli@3.1.1
 
 jobs:
   build-and-test:
