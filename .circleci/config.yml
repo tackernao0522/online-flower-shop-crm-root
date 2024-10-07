@@ -248,10 +248,14 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+      - run:
+          name: AWS ECR Login
+          command: |
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 699475951464.dkr.ecr.$AWS_REGION.amazonaws.com
       - aws-ecr/build-and-push-image:
-          account-url: AWS_ACCOUNT_ID
+          account-url: 699475951464.dkr.ecr.${AWS_REGION}.amazonaws.com
           repo: ofcrm-app
-          region: AWS_REGION
+          region: ${AWS_REGION}
           tag: ${CIRCLE_SHA1}
           path: ./api/infra/php
           dockerfile: Dockerfile.prod
