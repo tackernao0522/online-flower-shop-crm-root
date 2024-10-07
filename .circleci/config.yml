@@ -245,11 +245,12 @@ jobs:
 
             # Build Docker image for API
             docker build -t ofcrm-app:${CIRCLE_SHA1} \
-              --build-arg NGINX_CONF_PATH=./nginx/nginx.prod.conf \
-              --build-arg DEFAULT_CONF_PATH=./nginx/default.prod.conf \
-              --build-arg PHP_INI_PATH=./php/php.prod.ini \
-              --build-arg ENTRYPOINT_SCRIPT_PATH=./php/docker-entrypoint.prod.sh \
-              -f ./api/infra/php/Dockerfile.prod ./api
+              --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
+              --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
+              --build-arg PHP_INI_PATH=./php.prod.ini \
+              --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
+              -f ./api/infra/php/Dockerfile.prod ./api/infra
+
 
             # Tag Docker image
             docker tag ofcrm-app:${CIRCLE_SHA1} ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
