@@ -261,9 +261,9 @@ jobs:
           command: |
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
       - aws-ecr/build-and-push-image:
-          account-url: $ECR_ENDPOINT
+          account-url: ECR_ENDPOINT
           repo: ofcrm-app
-          region: $AWS_REGION
+          region: AWS_REGION
           tag: ${CIRCLE_SHA1}
           path: ./api/infra/php
           dockerfile: Dockerfile.prod
