@@ -258,8 +258,12 @@ jobs:
             # Login to ECR
             aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_ENDPOINT}
 
-            # Move to the correct directory
-            cd ~/project
+            # Debug: Print current directory and its contents
+            pwd
+            ls -la
+
+            # Debug: Print contents of api directory
+            ls -la api
 
             # Build Docker image
             docker build -t ofcrm-app:${CIRCLE_SHA1} \
