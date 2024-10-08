@@ -255,16 +255,40 @@ jobs:
             git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
-      # 新しく追加したステップ
       - run:
-          name: Prepare .env.production
+          name: Get RDS endpoint and prepare .env.production
           command: |
+            # RDSエンドポイントの取得
+            DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ofcrm-mysql --query "DBInstances[0].Endpoint.Address" --output text)
+
+            # .env.productionファイルの生成
             cd ./api/src
-            cp .env.production .env.production.tmp
-            sed -i "s#\${db_instance_endpoint}#$DB_HOST#g" .env.production.tmp
-            sed -i "s#\${db_username}#$DB_USERNAME#g" .env.production.tmp
-            sed -i "s#\${db_password}#$DB_PASSWORD#g" .env.production.tmp
-            mv .env.production.tmp .env.production
+            echo "APP_NAME=OFCRM" > .env.production
+            echo "APP_ENV=production" >> .env.production
+            echo "APP_KEY=${APP_KEY}" >> .env.production
+            echo "APP_DEBUG=false" >> .env.production
+            echo "APP_URL=https://api.tkb-tech.com" >> .env.production
+
+            echo "DB_CONNECTION=mysql" >> .env.production
+            echo "DB_HOST=${DB_HOST}" >> .env.production
+            echo "DB_PORT=3306" >> .env.production
+            echo "DB_DATABASE=flowercrm_production" >> .env.production
+            echo "DB_USERNAME=${DB_USERNAME}" >> .env.production
+            echo "DB_PASSWORD=${DB_PASSWORD}" >> .env.production
+
+            echo "BROADCAST_DRIVER=log" >> .env.production
+            echo "PUSHER_APP_ID=null" >> .env.production
+            echo "PUSHER_APP_KEY=null" >> .env.production
+            echo "PUSHER_APP_SECRET=null" >> .env.production
+            echo "PUSHER_HOST=null" >> .env.production
+            echo "PUSHER_PORT=null" >> .env.production
+            echo "PUSHER_SCHEME=https" >> .env.production
+            echo "PUSHER_APP_CLUSTER=null" >> .env.production
+
+            echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
+            echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
+
+            echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
       - run:
           name: Set ECR URL and Build Docker Image
           command: |
