@@ -252,46 +252,46 @@ jobs:
       - setup_remote_docker
       - aws-cli/setup
       - run:
-          name: Set ECR URL
+          name: Set ECR URL and Build Docker Image
           command: |
+            echo "Setting ECR URL..."
             echo "export ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $BASH_ENV
             source $BASH_ENV
-      - run:
-          name: AWS ECR Login
-          command: |
+            echo "ECR Endpoint: $ECR_ENDPOINT"
+
+            echo "Logging in to AWS ECR..."
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
-      - run:
-          name: Build and Push Docker Image
-          command: |
-            registry_id=$(echo $ECR_ENDPOINT | sed "s;\..*;;g")
-            number_of_tags_in_ecr=0
 
-            docker_tag_args=""
-            IFS="," read -ra DOCKER_TAGS \<<- "${CIRCLE_SHA1}"
-            for tag in "${DOCKER_TAGS[@]}"; do
-              if [ "false" = "true" ]; then
-                docker_tag_exists_in_ecr=$(aws ecr describe-images --profile default --registry-id $registry_id --repository-name ofcrm-app --query "contains(imageDetails[].imageTags[], '$tag')")
-                if [ "$docker_tag_exists_in_ecr" = "true" ]; then
-                  docker pull $ECR_ENDPOINT/ofcrm-app:${tag}
-                  let "number_of_tags_in_ecr+=1"
-                fi
-              fi
-              docker_tag_args="$docker_tag_args -t $ECR_ENDPOINT/ofcrm-app:$tag"
-            done
+            echo "Building Docker image..."
+            docker build \
+              --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
+              --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
+              --build-arg PHP_INI_PATH=./php.prod.ini \
+              --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
+              -t $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1} \
+              -f ./api/infra/php/Dockerfile.prod \
+              ./api/infra/php
 
-            # Dockerタグ引数をデバッグ出力
-            echo "Docker tag arguments: $docker_tag_args"
-
-            if [ "false" = "false" ] || [ "false" = "true" -a $number_of_tags_in_ecr -lt ${#DOCKER_TAGS[@]} ]; then
-              docker build \
-                --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
-                --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
-                --build-arg PHP_INI_PATH=./php.prod.ini \
-                --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
-                -f ./api/infra/php/Dockerfile.prod \
-                $docker_tag_args \
-                ./api/infra/php
+            if [ $? -ne 0 ]; then
+              echo "Docker build failed"
+              exit 1
             fi
+
+            echo "Docker build successful. Listing images:"
+            docker images
+
+            echo "Pushing image to ECR..."
+            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
+
+            if [ $? -ne 0 ]; then
+              echo "Failed to push image to ECR"
+              exit 1
+            fi
+
+            echo "Image successfully pushed to ECR"
+
+            echo "Describing image in ECR..."
+            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
