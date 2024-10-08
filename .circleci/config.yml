@@ -263,7 +263,7 @@ jobs:
 
             # .env.productionファイルの生成
             cd ./api/src
-            cat << 'EOF' > .env.production
+            cat <<- EOF > .env.production
             APP_NAME=OFCRM
             APP_ENV=production
             APP_KEY=${APP_KEY}
