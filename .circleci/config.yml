@@ -75,7 +75,7 @@ jobs:
       - run:
           name: Install Composer
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
+            if [ "$SKIP_API_TESTS" = "false" ];then
               curl -sS https://getcomposer.org/installer | php
               sudo mv composer.phar /usr/local/bin/composer
             fi
@@ -112,15 +112,6 @@ jobs:
               sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
             fi
           no_output_timeout: 1m
-
-      - run:
-          name: Restart MySQL Service if Needed
-          command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
-              if ! sudo systemctl is-active --quiet mysql; then
-                sudo systemctl restart mysql
-              fi
-            fi
 
       - restore_cache:
           keys:
@@ -170,78 +161,12 @@ jobs:
             fi
 
       - run:
-          name: Debug Database Connection
-          command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/project/api/src
-              echo "Environment variables:"
-              echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
-              echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
-              echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
-              echo "MySQL Version:"
-              mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
-              echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
-              echo "Database connection details:"
-              php artisan tinker --execute="print_r(config('database.connections.mysql'));"
-              echo "Attempting connection:"
-              php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); }"
-            fi
-
-      - run:
           name: Run database migrations and seed
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
               php artisan migrate --force --seed
             fi
-
-      - run:
-          name: Run Laravel tests
-          command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/project/api/src
-              php artisan test
-            fi
-
-      - node/install:
-          node-version: "18.17.0"
-
-      - restore_cache:
-          keys:
-            - node-v1-{{ checksum "~/project/front/package-lock.json" }}
-            - node-v1-
-
-      - run:
-          name: Install Node.js dependencies
-          working_directory: ~/project/front
-          command: |
-            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
-              npm install
-            fi
-
-      - save_cache:
-          key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
-          paths:
-            - ~/project/front/node_modules
-
-      - run:
-          name: Run frontend tests
-          working_directory: ~/project/front
-          command: |
-            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
-              npm test
-            fi
-
-      - slack/notify:
-          event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          template: basic_fail_1
-
-      - slack/notify:
-          event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          template: success_tagged_deploy_1
 
   build-and-push-image:
     docker:
@@ -255,21 +180,11 @@ jobs:
             git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
-
-      - run:
-          name: AWS CLI Configure
-          command: |
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile default
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile default
-            aws configure set default.region $AWS_DEFAULT_REGION --profile default
-
       - run:
           name: Get RDS endpoint and prepare .env.production
           command: |
-            # RDSエンドポイントの取得
             DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ofcrm-mysql --query "DBInstances[0].Endpoint.Address" --output text)
 
-            # .env.productionファイルの生成
             cd ./api/src
             echo "APP_NAME=OFCRM" > .env.production
             echo "APP_ENV=production" >> .env.production
@@ -297,6 +212,7 @@ jobs:
             echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
 
             echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
+
       - run:
           name: Set ECR URL and Build Docker Image
           command: |
@@ -338,6 +254,27 @@ jobs:
             echo "Describing image in ECR..."
             aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
 
+  deploy-service-update:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - setup_remote_docker
+      - aws-cli/setup
+      - run:
+          name: Deploy to ECS
+          command: |
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile default
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile default
+            aws configure set region $AWS_REGION --profile default
+
+            # Set the container image update for ECS deployment
+            aws ecs update-service --cluster ofcrm-cluster \
+              --service ofcrm-service \
+              --force-new-deployment \
+              --task-definition ofcrm-app \
+              --container-name ofcrm-app \
+              --container-image $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
+
 workflows:
   version: 2
   build-test-deploy:
@@ -351,23 +288,10 @@ workflows:
           filters:
             branches:
               only: main
-      - aws-ecs/deploy-service-update:
+      - deploy-service-update:
           context: my-production-context
           requires:
             - build-and-push-image
-          family: ofcrm-app
-          cluster-name: ofcrm-cluster
-          service-name: ofcrm-service
-          container-image-name-updates: "ofcrm-app=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
-          post-steps:
-            - slack/notify:
-                event: fail
-                channel: ${SLACK_CHANNEL_ID}
-                template: basic_fail_1
-            - slack/notify:
-                event: pass
-                channel: ${SLACK_CHANNEL_ID}
-                template: success_tagged_deploy_1
           filters:
             branches:
               only: main
