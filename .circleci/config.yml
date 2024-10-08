@@ -255,6 +255,14 @@ jobs:
             git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
+
+      - run:
+          name: AWS CLI Configure
+          command: |
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile default
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile default
+            aws configure set default.region $AWS_DEFAULT_REGION --profile default
+
       - run:
           name: Get RDS endpoint and prepare .env.production
           command: |
