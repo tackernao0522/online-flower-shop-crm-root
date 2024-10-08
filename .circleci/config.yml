@@ -3,8 +3,9 @@ version: 2.1
 orbs:
   node: circleci/node@5.0.2
   slack: circleci/slack@4.1.0
-  aws-cli: circleci/aws-cli@2.0.3
+  aws-ecr: circleci/aws-ecr@6.15.3
   aws-ecs: circleci/aws-ecs@2.1.0
+  aws-cli: circleci/aws-cli@2.0.3
 
 jobs:
   build-and-test:
@@ -50,6 +51,17 @@ jobs:
             else
               echo "Changes detected in API. Will run API tests."
               echo "export SKIP_API_TESTS=false" >> $BASH_ENV
+            fi
+
+      - run:
+          name: Check for Frontend changes
+          command: |
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
+              echo "No changes in Frontend. Skipping Frontend tests."
+              echo "export SKIP_FRONTEND_TESTS=true" >> $BASH_ENV
+            else
+              echo "Changes detected in Frontend. Will run Frontend tests."
+              echo "export SKIP_FRONTEND_TESTS=false" >> $BASH_ENV
             fi
 
       - run:
@@ -169,7 +181,8 @@ jobs:
               echo "MySQL Version:"
               mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
               echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user,
+                            host FROM mysql.user;"
               echo "Database connection details:"
               php artisan tinker --execute="print_r(config('database.connections.mysql'));"
               echo "Attempting connection:"
@@ -192,6 +205,35 @@ jobs:
               php artisan test
             fi
 
+      - node/install:
+          node-version: "18.17.0"
+
+      - restore_cache:
+          keys:
+            - node-v1-{{ checksum "~/project/front/package-lock.json" }}
+            - node-v1-
+
+      - run:
+          name: Install Node.js dependencies
+          working_directory: ~/project/front
+          command: |
+            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
+              npm install
+            fi
+
+      - save_cache:
+          key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
+          paths:
+            - ~/project/front/node_modules
+
+      - run:
+          name: Run frontend tests
+          working_directory: ~/project/front
+          command: |
+            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
+              npm test
+            fi
+
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
@@ -207,97 +249,49 @@ jobs:
       - image: cimg/base:stable
     steps:
       - checkout
-      - run:
-          name: Install tree
-          command: |
-            sudo apt-get update
-            sudo apt-get install -y tree
-      - run:
-          name: Submodules
-          command: |
-            git submodule sync
-            git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
       - run:
-          name: Display directory structure
+          name: Set ECR URL
           command: |
-            echo "Current directory:"
-            pwd
-            echo "Directory structure:"
-            tree -L 3 .
+            echo "export ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $BASH_ENV
+            source $BASH_ENV
       - run:
-          name: Setup production environment
+          name: AWS ECR Login
           command: |
-            # ファイルの存在を確認
-            cd ~/project/api/src
-            cat .env.production
-            if [ ! -f .env.production ]; then
-              echo "Error: .env.production file not found"
-              exit 1
-            fi
-            echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
-            echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
-
-
-            # JWT関連の設定を追加
-            echo "JWT_SECRET=${JWT_SECRET}" >> ./api/src/.env.production
-            echo "JWT_ALGO=${JWT_ALGO}" >> ./api/src/.env.production
-
-            # デバッグ用に内容を表示（機密情報に注意）
-            echo "Contents of .env.production file:"
-            cat .env.production
-            grep -v -e JWT_SECRET -e DB_PASSWORD .env.production
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
       - run:
-          name: Build and push Docker image to ECR
+          name: Build and Push Docker Image
           command: |
-            # Set ECR URL
-            ECR_ENDPOINT="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            registry_id=$(echo $ECR_ENDPOINT | sed "s;\..*;;g")
+            number_of_tags_in_ecr=0
 
-            # Login to ECR
-            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_ENDPOINT}
+            docker_tag_args=""
+            IFS="," read -ra DOCKER_TAGS \<<- "${CIRCLE_SHA1}"
+            for tag in "${DOCKER_TAGS[@]}"; do
+              if [ "false" = "true" ]; then
+                docker_tag_exists_in_ecr=$(aws ecr describe-images --profile default --registry-id $registry_id --repository-name ofcrm-app --query "contains(imageDetails[].imageTags[], '$tag')")
+                if [ "$docker_tag_exists_in_ecr" = "true" ]; then
+                  docker pull $ECR_ENDPOINT/ofcrm-app:${tag}
+                  let "number_of_tags_in_ecr+=1"
+                fi
+              fi
+              docker_tag_args="$docker_tag_args -t $ECR_ENDPOINT/ofcrm-app:$tag"
+            done
 
-            # Debug: Print current directory and its contents
-            pwd
-            ls -la
+            # Dockerタグ引数をデバッグ出力
+            echo "Docker tag arguments: $docker_tag_args"
 
-            # Debug: Print contents of relevant directories
-            echo "Contents of api/infra/php:"
-            ls -la api/infra/php
-            echo "Contents of api/infra/nginx:"
-            ls -la api/infra/nginx
-            echo "Contents of api/src:"
-            ls -la api/src
-
-            # Ensure all necessary files exist
-            if [ ! -f api/infra/php/php.prod.ini ]; then
-              echo "Error: php.prod.ini not found"
-              exit 1
+            if [ "false" = "false" ] || [ "false" = "true" -a $number_of_tags_in_ecr -lt ${#DOCKER_TAGS[@]} ]; then
+              docker build \
+                --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
+                --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
+                --build-arg PHP_INI_PATH=./php.prod.ini \
+                --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
+                -f ./api/infra/php/Dockerfile.prod \
+                $docker_tag_args \
+                ./api/infra/php
             fi
-            if [ ! -f api/infra/php/docker-entrypoint.prod.sh ]; then
-              echo "Error: docker-entrypoint.prod.sh not found"
-              exit 1
-            fi
-
-            # Build Docker image for API
-            docker build -t ofcrm-app:${CIRCLE_SHA1} \
-              --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
-              --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
-              --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
-              --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
-              -f ./api/infra/php/Dockerfile.prod ./api
-
-            # Debug: Show Docker build result
-            docker images
-
-            # Tag Docker image
-            docker tag ofcrm-app:${CIRCLE_SHA1} ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
-
-            # Push Docker image to ECR
-            docker push ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
-
-            # Debug: Confirm push
-            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
