@@ -351,19 +351,19 @@ workflows:
             branches:
               only: main
       - aws-ecs/deploy-service-update:
-          context: my-production-context
-          requires:
-            - build-and-push-image
-          family: ofcrm-app
-          cluster-name: ofcrm-cluster
-          service-name: ofcrm-service
-          container-image-name-updates: "ofcrm-app=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
-          post-steps:
-            - slack/notify:
-                event: fail
-                channel: ${SLACK_CHANNEL_ID}
-                template: basic_fail_1
-            - slack/notify:
-                event: pass
-                channel: ${SLACK_CHANNEL_ID}
-                template: success_tagged_deploy_1
+        context: my-production-context
+        requires:
+          - build-and-push-image
+        family: ofcrm-app
+        cluster-name: ofcrm-cluster
+        service-name: ofcrm-service
+        container-image-name-updates: "container=ofcrm-app,tag=${CIRCLE_SHA1}"
+        post-steps:
+          - slack/notify:
+            event: fail
+            channel: ${SLACK_CHANNEL_ID}
+            template: basic_fail_1
+          - slack/notify:
+            event: pass
+            channel: ${SLACK_CHANNEL_ID}
+            template: success_tagged_deploy_1
