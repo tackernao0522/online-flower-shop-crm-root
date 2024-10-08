@@ -357,7 +357,7 @@ workflows:
           family: ofcrm-app
           cluster-name: ofcrm-cluster
           service-name: ofcrm-service
-          container-image-name-updates: "ofcrm-app=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
+          container-image-name-updates: "ofcrm-container-name=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
           post-steps:
             - slack/notify:
                 event: fail
