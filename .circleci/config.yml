@@ -31,12 +31,6 @@ jobs:
             chmod 600 ~/.ssh/config
 
       - run:
-          name: Debug SSH keys
-          command: |
-            ssh-add -l
-            ls -la ~/.ssh
-
-      - run:
           name: Checkout Submodules with SSH
           command: |
             git submodule sync
@@ -93,7 +87,7 @@ jobs:
       - run:
           name: Configure MySQL
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
+            if [ "$SKIP_API_TESTS" = "false" ];then
               sudo systemctl start mysql
               sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
               sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
@@ -191,7 +185,7 @@ jobs:
       - run:
           name: Run database migrations and seed
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
+            if [ "$SKIP_API_TESTS" = "false" ];then
               cd ~/project/api/src
               php artisan migrate --force --seed
             fi
@@ -338,14 +332,14 @@ workflows:
       - build-and-test:
           context: my-context
       - build-and-push-image:
-          context: my-production-context # 新しいproduction用のcontextを指定
+          context: my-production-context
           requires:
             - build-and-test
           filters:
             branches:
               only: main
       - aws-ecs/deploy-service-update:
-          context: my-production-context # production用のcontextを指定
+          context: my-production-context
           requires:
             - build-and-push-image
           family: ofcrm-app
