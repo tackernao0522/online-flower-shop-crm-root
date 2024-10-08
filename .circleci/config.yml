@@ -358,6 +358,7 @@ workflows:
           cluster-name: ofcrm-cluster
           service-name: ofcrm-service
           container-image-name-updates: "container=ofcrm-app,tag=${CIRCLE_SHA1}"
+          force-new-deployment: true
           post-steps:
             - slack/notify:
                 event: fail
