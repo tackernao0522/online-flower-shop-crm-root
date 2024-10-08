@@ -276,7 +276,7 @@ jobs:
             echo "DB_USERNAME=${DB_USERNAME}" >> .env.production
             echo "DB_PASSWORD=${DB_PASSWORD}" >> .env.production
 
-            echo "BROADCAST_DRIVER=log" >> .env.production
+            echo "BROADCAST_DRIVER=null" >> .env.production
             echo "PUSHER_APP_ID=null" >> .env.production
             echo "PUSHER_APP_KEY=null" >> .env.production
             echo "PUSHER_APP_SECRET=null" >> .env.production
