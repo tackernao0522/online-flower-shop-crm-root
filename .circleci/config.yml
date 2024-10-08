@@ -80,6 +80,48 @@ jobs:
               sudo mv composer.phar /usr/local/bin/composer
             fi
 
+      - run:
+          name: Debug Environment Variables
+          command: |
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
+              echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
+              echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
+              echo "CI_MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}"
+            fi
+
+      - run:
+          name: Configure MySQL
+          command: |
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              sudo systemctl start mysql
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE USER IF NOT EXISTS '${CI_MYSQL_USER}'@'localhost' IDENTIFIED BY '${CI_MYSQL_PASSWORD}';"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
+            fi
+
+      - run:
+          name: Check MySQL Service
+          command: |
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              sudo systemctl status mysql --no-pager
+              mysql --version
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
+              sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
+            fi
+          no_output_timeout: 1m
+
+      - run:
+          name: Restart MySQL Service if Needed
+          command: |
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              if ! sudo systemctl is-active --quiet mysql; then
+                sudo systemctl restart mysql
+              fi
+            fi
+
       - restore_cache:
           keys:
             - composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
@@ -154,6 +196,53 @@ jobs:
               php artisan migrate --force --seed
             fi
 
+      - run:
+          name: Run Laravel tests
+          command: |
+            if [ "$SKIP_API_TESTS" = "false" ]; then
+              cd ~/project/api/src
+              php artisan test
+            fi
+
+      - node/install:
+          node-version: "18.17.0"
+
+      - restore_cache:
+          keys:
+            - node-v1-{{ checksum "~/project/front/package-lock.json" }}
+            - node-v1-
+
+      - run:
+          name: Install Node.js dependencies
+          working_directory: ~/project/front
+          command: |
+            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
+              npm install
+            fi
+
+      - save_cache:
+          key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
+          paths:
+            - ~/project/front/node_modules
+
+      - run:
+          name: Run frontend tests
+          working_directory: ~/project/front
+          command: |
+            if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
+              npm test
+            fi
+
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID}
+          template: basic_fail_1
+
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID}
+          template: success_tagged_deploy_1
+
   build-and-push-image:
     docker:
       - image: cimg/base:stable
@@ -203,7 +292,7 @@ jobs:
           name: Set ECR URL and Build Docker Image
           command: |
             echo "Setting ECR URL..."
-            ECR_ENDPOINT="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+            ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
             echo "export ECR_ENDPOINT=$ECR_ENDPOINT" >> $BASH_ENV
             source $BASH_ENV
             echo "ECR Endpoint: $ECR_ENDPOINT"
@@ -238,29 +327,9 @@ jobs:
             fi
 
             echo "Image successfully pushed to ECR"
+
             echo "Describing image in ECR..."
             aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
-
-  deploy-service-update:
-    docker:
-      - image: cimg/base:stable
-    steps:
-      - setup_remote_docker
-      - aws-cli/setup
-      - run:
-          name: Deploy to ECS
-          command: |
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile default
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile default
-            aws configure set region $AWS_REGION --profile default
-
-            # Set the container image update for ECS deployment
-            aws ecs update-service --cluster ofcrm-cluster \
-              --service ofcrm-service \
-              --force-new-deployment \
-              --task-definition ofcrm-app \
-              --container-name ofcrm-app \
-              --container-image $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
 
 workflows:
   version: 2
@@ -269,16 +338,26 @@ workflows:
       - build-and-test:
           context: my-context
       - build-and-push-image:
-          context: my-production-context
+          context: my-production-context # 新しいproduction用のcontextを指定
           requires:
             - build-and-test
           filters:
             branches:
               only: main
-      - deploy-service-update:
-          context: my-production-context
+      - aws-ecs/deploy-service-update:
+          context: my-production-context # production用のcontextを指定
           requires:
             - build-and-push-image
-          filters:
-            branches:
-              only: main
+          family: ofcrm-app
+          cluster-name: ofcrm-cluster
+          service-name: ofcrm-service
+          container-image-name-updates: "ofcrm-app=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/ofcrm-app:${CIRCLE_SHA1}"
+          post-steps:
+            - slack/notify:
+                event: fail
+                channel: ${SLACK_CHANNEL_ID}
+                template: basic_fail_1
+            - slack/notify:
+                event: pass
+                channel: ${SLACK_CHANNEL_ID}
+                template: success_tagged_deploy_1
