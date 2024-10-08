@@ -230,16 +230,14 @@ jobs:
           name: Setup production environment
           command: |
             # ファイルの存在を確認
-            if [ -f ./api/.env.production ]; then
-              echo ".env.production file found in ./api/"
-              cp ./api/.env.production ./api/src/.env.production
-            elif [ -f ./api/src/.env.production ]; then
-              echo ".env.production file found in ./api/src/"
-              cp ./api/src/.env.production ./api/src/.env.production
-            else
+            cd ~/project/api/src
+            if [ ! -f .env.production ]; then
               echo "Error: .env.production file not found"
               exit 1
             fi
+            echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
+            echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
+
 
             # JWT関連の設定を追加
             echo "JWT_SECRET=${JWT_SECRET}" >> ./api/src/.env.production
@@ -247,7 +245,7 @@ jobs:
 
             # デバッグ用に内容を表示（機密情報に注意）
             echo "Contents of .env.production file:"
-            cat ./api/src/.env.production
+            cat .env.production
             grep -v -e JWT_SECRET -e DB_PASSWORD .env.production
       - run:
           name: Build and push Docker image to ECR
