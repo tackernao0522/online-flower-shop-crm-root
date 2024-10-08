@@ -112,27 +112,27 @@ jobs:
 
       - restore_cache:
           keys:
-            - composer-v1-{{ checksum "~/projects/api/src/composer.lock" }}
+            - composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
             - composer-v1-
 
       - run:
           name: Install Composer Dependencies
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/projects/api/src
+              cd ~/project/api/src
               composer install --no-interaction --prefer-dist
             fi
 
       - save_cache:
-          key: composer-v1-{{ checksum "~/projects/api/src/composer.lock" }}
+          key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
           paths:
-            - ~/projects/api/src/vendor
+            - ~/project/api/src/vendor
 
       - run:
           name: Create and Debug .env file
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/projects/api/src
+              cd ~/project/api/src
               cp .env.example .env
               sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
               sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
@@ -152,7 +152,7 @@ jobs:
           name: Clear Config Cache
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/projects/api/src
+              cd ~/project/api/src
               php artisan config:clear
               php artisan cache:clear
             fi
@@ -161,7 +161,7 @@ jobs:
           name: Debug Database Connection
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/projects/api/src
+              cd ~/project/api/src
               echo "Environment variables:"
               echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
               echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
@@ -180,7 +180,7 @@ jobs:
           name: Run database migrations and seed
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/projects/api/src
+              cd ~/project/api/src
               php artisan migrate --force --seed
             fi
 
@@ -188,7 +188,7 @@ jobs:
           name: Run Laravel tests
           command: |
             if [ "$SKIP_API_TESTS" = "false" ]; then
-              cd ~/projects/api/src
+              cd ~/project/api/src
               php artisan test
             fi
 
@@ -230,8 +230,8 @@ jobs:
           name: Setup production environment
           command: |
             # ファイルの存在を確認
-            cd ~/projects/api/src
-            if [ ! -f ./api/src/.env.production ]; then
+            cd ~/project/api/src
+            if [ ! -f .env.production ]; then
               echo "Error: .env.production file not found"
               exit 1
             fi
