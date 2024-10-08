@@ -227,6 +227,13 @@ jobs:
             echo "Directory structure:"
             tree -L 3 .
       - run:
+          name: Setup production environment
+          command: |
+            cd ./api/src
+            cp .env.production .env.production
+            echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
+            echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
+      - run:
           name: Build and push Docker image to ECR
           command: |
             # Set ECR URL
