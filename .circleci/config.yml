@@ -87,7 +87,7 @@ jobs:
       - run:
           name: Configure MySQL
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ];then
+            if [ "$SKIP_API_TESTS" = "false" ]; then
               sudo systemctl start mysql
               sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${CI_MYSQL_ROOT_PASSWORD}';"
               sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "CREATE DATABASE IF NOT EXISTS ${CI_MYSQL_DATABASE};"
@@ -185,7 +185,7 @@ jobs:
       - run:
           name: Run database migrations and seed
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ];then
+            if [ "$SKIP_API_TESTS" = "false" ]; then
               cd ~/project/api/src
               php artisan migrate --force --seed
             fi
@@ -247,8 +247,20 @@ jobs:
           command: |
             git submodule sync
             git submodule update --init --recursive
+
       - setup_remote_docker
+
       - aws-cli/setup
+
+      - run:
+          name: Configure AWS default region
+          command: |
+            if [ -z "$AWS_DEFAULT_REGION" ]; then
+              echo "AWS_DEFAULT_REGION is not set. Exiting."
+              exit 1
+            fi
+            aws configure set default.region $AWS_DEFAULT_REGION --profile default
+
       - run:
           name: Get RDS endpoint and prepare .env.production
           command: |
