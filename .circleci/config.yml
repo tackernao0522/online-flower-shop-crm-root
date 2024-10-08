@@ -205,8 +205,6 @@ jobs:
             echo "PUSHER_APP_SECRET=null" >> .env.production
             echo "PUSHER_HOST=null" >> .env.production
             echo "PUSHER_PORT=null" >> .env.production
-            echo "PUSHER_SCHEME=https" >> .env.production
-            echo "PUSHER_APP_CLUSTER=null" >> .env.production
 
             echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
             echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
