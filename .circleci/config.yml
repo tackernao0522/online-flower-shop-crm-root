@@ -181,8 +181,7 @@ jobs:
               echo "MySQL Version:"
               mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
               echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user,
-                            host FROM mysql.user;"
+              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
               echo "Database connection details:"
               php artisan tinker --execute="print_r(config('database.connections.mysql'));"
               echo "Attempting connection:"
@@ -256,6 +255,16 @@ jobs:
             git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
+      # 新しく追加したステップ
+      - run:
+          name: Prepare .env.production
+          command: |
+            cd ./api/src
+            cp .env.production .env.production.tmp
+            sed -i "s#\${db_instance_endpoint}#$DB_HOST#g" .env.production.tmp
+            sed -i "s#\${db_username}#$DB_USERNAME#g" .env.production.tmp
+            sed -i "s#\${db_password}#$DB_PASSWORD#g" .env.production.tmp
+            mv .env.production.tmp .env.production
       - run:
           name: Set ECR URL and Build Docker Image
           command: |
