@@ -255,14 +255,6 @@ jobs:
             git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
-
-      - run:
-          name: AWS CLI Configure
-          command: |
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile default
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile default
-            aws configure set default.region $AWS_DEFAULT_REGION --profile default
-
       - run:
           name: Get RDS endpoint and prepare .env.production
           command: |
@@ -345,14 +337,14 @@ workflows:
       - build-and-test:
           context: my-context
       - build-and-push-image:
-          context: my-production-context
+          context: my-production-context # 新しいproduction用のcontextを指定
           requires:
             - build-and-test
           filters:
             branches:
               only: main
       - aws-ecs/deploy-service-update:
-          context: my-production-context
+          context: my-production-context # production用のcontextを指定
           requires:
             - build-and-push-image
           family: ofcrm-app
