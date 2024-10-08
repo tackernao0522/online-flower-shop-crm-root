@@ -220,7 +220,7 @@ jobs:
             echo "Current directory:"
             pwd
             echo "Directory structure:"
-            tree -L 3 ./api
+            tree -L 3 .
       - run:
           name: Build and push Docker image to ECR
           command: |
@@ -239,6 +239,8 @@ jobs:
             ls -la api/infra/php
             echo "Contents of api/infra/nginx:"
             ls -la api/infra/nginx
+            echo "Contents of api/src:"
+            ls -la api/src
 
             # Ensure all necessary files exist
             if [ ! -f api/infra/php/php.prod.ini ]; then
@@ -252,18 +254,23 @@ jobs:
 
             # Build Docker image for API
             docker build -t ofcrm-app:${CIRCLE_SHA1} \
-              --build-arg NGINX_CONF_PATH=../nginx/nginx.prod.conf \
-              --build-arg DEFAULT_CONF_PATH=../nginx/default.prod.conf \
-              --build-arg PHP_INI_PATH=./php.prod.ini \
-              --build-arg ENTRYPOINT_SCRIPT_PATH=./docker-entrypoint.prod.sh \
-              -f ./api/infra/php/Dockerfile.prod ./api/infra
+              --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
+              --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
+              --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
+              --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
+              -f ./api/infra/php/Dockerfile.prod ./api
 
+            # Debug: Show Docker build result
+            docker images
 
             # Tag Docker image
             docker tag ofcrm-app:${CIRCLE_SHA1} ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
 
             # Push Docker image to ECR
             docker push ${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}
+
+            # Debug: Confirm push
+            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID}
