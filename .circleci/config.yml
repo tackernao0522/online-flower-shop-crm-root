@@ -83,7 +83,7 @@ jobs:
       - run:
           name: Debug Environment Variables
           command: |
-            if [ "$SKIP_API_TESTS" = "false" ]; then
+            if [ "$SKIP_API_TESTS" = "false" ];then
               echo "CI_MYSQL_DATABASE: ${CI_MYSQL_DATABASE}"
               echo "CI_MYSQL_USER: ${CI_MYSQL_USER}"
               echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
@@ -181,6 +181,13 @@ jobs:
       - setup_remote_docker
       - aws-cli/setup
       - run:
+          name: Set AWS Region
+          command: |
+            echo "export AWS_REGION=ap-northeast-1" >> $BASH_ENV
+            echo "export AWS_DEFAULT_REGION=ap-northeast-1" >> $BASH_ENV
+            source $BASH_ENV
+
+      - run:
           name: Get RDS endpoint and prepare .env.production
           command: |
             DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ofcrm-mysql --query "DBInstances[0].Endpoint.Address" --output text)
@@ -205,6 +212,8 @@ jobs:
             echo "PUSHER_APP_SECRET=null" >> .env.production
             echo "PUSHER_HOST=null" >> .env.production
             echo "PUSHER_PORT=null" >> .env.production
+            echo "PUSHER_SCHEME=https" >> .env.production
+            echo "PUSHER_APP_CLUSTER=null" >> .env.production
 
             echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
             echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
@@ -215,12 +224,13 @@ jobs:
           name: Set ECR URL and Build Docker Image
           command: |
             echo "Setting ECR URL..."
-            echo "export ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $BASH_ENV
+            ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+            echo "export ECR_ENDPOINT=$ECR_ENDPOINT" >> $BASH_ENV
             source $BASH_ENV
             echo "ECR Endpoint: $ECR_ENDPOINT"
 
             echo "Logging in to AWS ECR..."
-            aws ecr get-login-password --region $AWS_REGION --debug | docker login --username AWS --password-stdin $ECR_ENDPOINT
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
 
             echo "Building Docker image..."
             docker build \
