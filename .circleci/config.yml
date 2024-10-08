@@ -222,7 +222,7 @@ jobs:
             echo "ECR Endpoint: $ECR_ENDPOINT"
 
             echo "Logging in to AWS ECR..."
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
+            aws ecr get-login-password --region $AWS_REGION --debug | docker login --username AWS --password-stdin $ECR_ENDPOINT
 
             echo "Building Docker image..."
             docker build \
