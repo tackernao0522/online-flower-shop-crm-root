@@ -327,17 +327,8 @@ jobs:
             fi
 
             echo "Image successfully pushed to ECR"
-
             echo "Describing image in ECR..."
             aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
-      - slack/notify:
-          event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          template: basic_fail_1
-      - slack/notify:
-          event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          template: success_tagged_deploy_1
 
 workflows:
   version: 2
@@ -346,14 +337,14 @@ workflows:
       - build-and-test:
           context: my-context
       - build-and-push-image:
-          context: my-context
+          context: my-production-context # 新しいproduction用のcontextを指定
           requires:
             - build-and-test
           filters:
             branches:
               only: main
       - aws-ecs/deploy-service-update:
-          context: my-context
+          context: my-production-context # production用のcontextを指定
           requires:
             - build-and-push-image
           family: ofcrm-app
