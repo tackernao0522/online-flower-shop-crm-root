@@ -345,14 +345,14 @@ workflows:
       - build-and-test:
           context: my-context
       - build-and-push-image:
-          context: my-production-context # 新しいproduction用のcontextを指定
+          context: my-production-context
           requires:
             - build-and-test
           filters:
             branches:
               only: main
       - aws-ecs/deploy-service-update:
-          context: my-production-context # production用のcontextを指定
+          context: my-production-context
           requires:
             - build-and-push-image
           family: ofcrm-app
