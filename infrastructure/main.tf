@@ -74,6 +74,23 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# プライベートルートテーブル
+resource "aws_route_table" "private" {
+  count  = 2
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-private-rt-${count.index + 1}"
+  }
+}
+
+# プライベートサブネットとルートテーブルの関連付け
+resource "aws_route_table_association" "private" {
+  count          = 2
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
+}
+
 # 利用可能なAZのデータソース
 data "aws_availability_zones" "available" {
   state = "available"
@@ -290,10 +307,10 @@ resource "aws_s3_bucket" "front" {
 resource "aws_s3_bucket_public_access_block" "front" {
   bucket = aws_s3_bucket.front.id
 
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
 }
 
 # CloudFront OAI
@@ -652,7 +669,7 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.public.id]
+  route_table_ids   = aws_route_table.private[*].id
 
   tags = {
     Name = "${var.project_name}-s3-endpoint"
