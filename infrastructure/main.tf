@@ -510,7 +510,8 @@ resource "aws_ecs_service" "app" {
 
 # ECR Repository
 resource "aws_ecr_repository" "app" {
-  name = "${var.project_name}-app"
+  name         = "${var.project_name}-app"
+  force_delete = true
 }
 
 # ECS Task Execution Role
@@ -547,7 +548,7 @@ resource "aws_security_group" "ecs_tasks" {
     security_groups = [aws_security_group.alb.id]
   }
 
-egress {
+  egress {
     protocol    = "-1"
     from_port   = 0
     to_port     = 0
@@ -567,10 +568,64 @@ resource "aws_lb_target_group" "app" {
     healthy_threshold   = "3"
     interval            = "30"
     protocol            = "HTTP"
-    matcher             = "200"
+        matcher             = "200"
     timeout             = "3"
     path                = "/health"
     unhealthy_threshold = "2"
+  }
+}
+
+# VPCエンドポイント（NAT Gatewayを使用しない場合）
+resource "aws_vpc_endpoint" "ecr_docker" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.ecs_tasks.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-ecr-docker-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.ecs_tasks.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-ecr-api-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "cloudwatch_logs" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.logs"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.ecs_tasks.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-cloudwatch-logs-endpoint"
+  }
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.public.id]
+
+  tags = {
+    Name = "${var.project_name}-s3-endpoint"
   }
 }
 
