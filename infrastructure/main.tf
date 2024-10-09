@@ -585,7 +585,7 @@ resource "aws_lb_target_group" "app" {
     healthy_threshold   = "3"
     interval            = "30"
     protocol            = "HTTP"
-        matcher             = "200"
+    matcher             = "200"
     timeout             = "3"
     path                = "/health"
     unhealthy_threshold = "2"
@@ -662,17 +662,6 @@ resource "aws_vpc_endpoint" "ssm" {
 
   tags = {
     Name = "${var.project_name}-ssm-endpoint"
-  }
-}
-
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.s3"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = aws_route_table.private[*].id
-
-  tags = {
-    Name = "${var.project_name}-s3-endpoint"
   }
 }
 
