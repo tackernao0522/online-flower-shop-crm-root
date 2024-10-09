@@ -503,6 +503,12 @@ resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# S3へのアクセスを許可するポリシー
+resource "aws_iam_role_policy_attachment" "ecs_task_s3_read_policy" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+}
+
 # ECS Service
 resource "aws_ecs_service" "app" {
   name            = "${var.project_name}-service"
@@ -562,6 +568,14 @@ resource "aws_security_group" "ecs_tasks" {
     protocol        = "tcp"
     from_port       = 80
     to_port         = 80
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  # HTTPSトラフィックを許可するルール
+  ingress {
+    protocol        = "tcp"
+    from_port       = 443
+    to_port         = 443
     security_groups = [aws_security_group.alb.id]
   }
 
