@@ -1,10 +1,10 @@
 # AWSプロバイダーの設定
 provider "aws" {
-  region = var.aws_region
+  region = var.aws_region  # ap-northeast-1
 }
 
 provider "aws" {
-  alias  = "us-east-1"
+  alias  = "us_east_1"
   region = "us-east-1"
 }
 
@@ -226,8 +226,8 @@ resource "aws_route53_record" "api" {
   }
 }
 
-# ACM 証明書のリクエスト (API)
-resource "aws_acm_certificate" "api_cert" {
+# ACM 証明書のリクエスト (API, 東京リージョン)
+resource "aws_acm_certificate" "api_cert_tokyo" {
   domain_name       = "api.${var.domain_name}"
   validation_method = "DNS"
 
@@ -240,10 +240,10 @@ resource "aws_acm_certificate" "api_cert" {
   }
 }
 
-# Route 53でのDNS検証を設定 (API)
+# Route 53でのDNS検証を設定 (API, 東京リージョン)
 resource "aws_route53_record" "api_cert_validation" {
   for_each = {
-    for dvo in aws_acm_certificate.api_cert.domain_validation_options : dvo.domain_name => {
+    for dvo in aws_acm_certificate.api_cert_tokyo.domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
@@ -257,9 +257,9 @@ resource "aws_route53_record" "api_cert_validation" {
   records = [each.value.record]
 }
 
-# ACM証明書の検証完了待ち (API)
-resource "aws_acm_certificate_validation" "api_cert_validation" {
-  certificate_arn         = aws_acm_certificate.api_cert.arn
+# ACM証明書の検証完了待ち (API, 東京リージョン)
+resource "aws_acm_certificate_validation" "api_cert_validation_tokyo" {
+  certificate_arn         = aws_acm_certificate.api_cert_tokyo.arn
   validation_record_fqdns = [for record in aws_route53_record.api_cert_validation : record.fqdn]
 }
 
@@ -269,16 +269,11 @@ resource "aws_lb_listener" "https" {
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = aws_acm_certificate_validation.api_cert_validation.certificate_arn
+  certificate_arn   = aws_acm_certificate_validation.api_cert_validation_tokyo.certificate_arn  # 東京リージョンの証明書
 
   default_action {
-    type = "fixed-response"
-
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "OK"
-      status_code  = "200"
-    }
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
   }
 }
 
@@ -322,9 +317,9 @@ resource "aws_s3_bucket_policy" "front" {
   })
 }
 
-# ACM 証明書 for front (us-east-1リージョンに作成)
+# ACM 証明書 for front
 resource "aws_acm_certificate" "front_cert" {
-  provider          = aws.us-east-1
+  provider          = aws.us_east_1  # us-east-1で証明書発行（CloudFrontの要件により）
   domain_name       = "front.${var.domain_name}"
   validation_method = "DNS"
 
@@ -339,6 +334,8 @@ resource "aws_acm_certificate" "front_cert" {
 
 # DNS検証 for front
 resource "aws_route53_record" "front_cert_validation" {
+  provider = aws.us_east_1  # us-east-1プロバイダーでDNS検証
+
   for_each = {
     for dvo in aws_acm_certificate.front_cert.domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
@@ -356,8 +353,8 @@ resource "aws_route53_record" "front_cert_validation" {
 
 # ACM証明書の検証完了待ち (Front)
 resource "aws_acm_certificate_validation" "front_cert_validation" {
-  provider                = aws.us-east-1
-  certificate_arn         = aws_acm_certificate.front_cert.arn
+  provider              = aws.us_east_1
+  certificate_arn       = aws_acm_certificate.front_cert.arn
   validation_record_fqdns = [for record in aws_route53_record.front_cert_validation : record.fqdn]
 }
 
@@ -387,11 +384,10 @@ resource "aws_cloudfront_distribution" "front" {
       }
     }
 
-    min_ttl     = 0
-    default_ttl = 0
-    max_ttl     = 0
-
     viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
   }
 
   restrictions {
@@ -401,7 +397,7 @@ resource "aws_cloudfront_distribution" "front" {
   }
 
   viewer_certificate {
-    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn
+    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn  # us-east-1証明書
     ssl_support_method  = "sni-only"
   }
 
@@ -460,13 +456,6 @@ resource "aws_ecs_task_definition" "app" {
         awslogs-stream-prefix = "ecs"
       }
     }
-    healthCheck = {
-      command     = ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
-      interval    = 30
-      timeout     = 5
-      retries     = 3
-      startPeriod = 60
-    }
   }])
 }
 
@@ -515,6 +504,8 @@ resource "aws_ecs_service" "app" {
     container_name   = "${var.project_name}-app"
     container_port   = 80
   }
+
+  depends_on = [aws_lb_listener.https]
 }
 
 # ECR Repository
@@ -556,7 +547,7 @@ resource "aws_security_group" "ecs_tasks" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  egress {
+egress {
     protocol    = "-1"
     from_port   = 0
     to_port     = 0
@@ -583,19 +574,28 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
-# ALB Listener Rule
-resource "aws_lb_listener_rule" "app" {
-  listener_arn = aws_lb_listener.https.arn
-  priority     = 100
+# Outputs
+output "alb_dns_name" {
+  description = "The DNS name of the load balancer"
+  value       = aws_lb.main.dns_name
+}
 
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
-  }
+output "api_url" {
+  description = "The URL of the API"
+  value       = "https://api.${var.domain_name}"
+}
 
-  condition {
-    host_header {
-      values = ["api.${var.domain_name}"]
-    }
-  }
+output "frontend_url" {
+  description = "The URL of the frontend"
+  value       = "https://front.${var.domain_name}"
+}
+
+output "ecr_repository_url" {
+  description = "The URL of the ECR repository"
+  value       = aws_ecr_repository.app.repository_url
+}
+
+output "rds_endpoint" {
+  description = "The endpoint of the RDS instance"
+  value       = aws_db_instance.mysql.endpoint
 }
