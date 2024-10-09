@@ -618,6 +618,36 @@ resource "aws_vpc_endpoint" "cloudwatch_logs" {
   }
 }
 
+# ECS Agent 用 VPCエンドポイント
+resource "aws_vpc_endpoint" "ecs_agent" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.ecs-agent"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.ecs_tasks.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-ecs-agent-endpoint"
+  }
+}
+
+# SSM 用 VPCエンドポイント
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.ssm"
+  vpc_endpoint_type = "Interface"
+  subnet_ids        = aws_subnet.private[*].id
+  security_group_ids = [aws_security_group.ecs_tasks.id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-ssm-endpoint"
+  }
+}
+
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
