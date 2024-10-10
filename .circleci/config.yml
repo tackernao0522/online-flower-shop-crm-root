@@ -275,6 +275,7 @@ jobs:
             echo "APP_KEY=${APP_KEY}" >> .env.production
             echo "APP_DEBUG=false" >> .env.production
             echo "APP_URL=https://api.tkb-tech.com" >> .env.production
+            echo "LOG_LEVEL=debug" >> .env.production
 
             echo "DB_CONNECTION=mysql" >> .env.production
             echo "DB_HOST=${DB_HOST}" >> .env.production
