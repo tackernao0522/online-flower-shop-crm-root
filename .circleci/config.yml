@@ -250,7 +250,9 @@ jobs:
             git submodule sync
             git submodule update --init --recursive
 
-      - setup_remote_docker
+      # バージョンを明示的に指定
+      - setup_remote_docker:
+          version: 20.10.14
 
       - aws-cli/setup
 
@@ -297,6 +299,11 @@ jobs:
 
             echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
 
+      # Dockerビルドのキャッシュを利用
+      - restore_cache:
+          keys:
+            - docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
+
       - run:
           name: Set ECR URL and Build Docker Image
           command: |
@@ -340,6 +347,61 @@ jobs:
             echo "Describing image in ECR..."
             aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
 
+      # Dockerビルドのキャッシュを保存
+      - save_cache:
+          paths:
+            - /home/circleci/.docker
+          key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
+
+      # タスク定義の更新
+      - run:
+          name: Update ECS task definition
+          command: |
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition)
+            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"')
+            NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
+            NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+            echo "New task definition revision: $NEW_REVISION"
+
+  deploy-to-ecs:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - aws-cli/setup
+      - run:
+          name: Deploy to ECS
+          command: |
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query 'taskDefinition.taskDefinitionArn' --output text)
+            aws ecs update-service --cluster ofcrm-cluster --service ofcrm-service --task-definition $TASK_DEFINITION --force-new-deployment
+
+      - run:
+          name: Wait for service to be stable
+          command: |
+            aws ecs wait services-stable --cluster ofcrm-cluster --services ofcrm-service
+
+      - run:
+          name: Verify deployment
+          command: |
+            # サービスのヘルスチェックを行う
+            HEALTH_CHECK_URL="https://api.tkb-tech.com/health"  # あなたのアプリケーションに合わせて変更してください
+            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
+            if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+              echo "Deployment successful. Health check passed."
+            else
+              echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
+              exit 1
+            fi
+
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID}
+          template: basic_fail_1
+
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID}
+          template: success_tagged_deploy_1
+
 workflows:
   version: 2
   build-test-deploy:
@@ -353,21 +415,10 @@ workflows:
           filters:
             branches:
               only: main
-      - aws-ecs/deploy-service-update:
+      - deploy-to-ecs:
           context: my-production-context
           requires:
             - build-and-push-image
-          family: ofcrm-app
-          cluster-name: ofcrm-cluster
-          service-name: ofcrm-service
-          container-image-name-updates: "container=ofcrm-app,tag=${CIRCLE_SHA1}"
-          force-new-deployment: true
-          post-steps:
-            - slack/notify:
-                event: fail
-                channel: ${SLACK_CHANNEL_ID}
-                template: basic_fail_1
-            - slack/notify:
-                event: pass
-                channel: ${SLACK_CHANNEL_ID}
-                template: success_tagged_deploy_1
+          filters:
+            branches:
+              only: main
