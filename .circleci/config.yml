@@ -251,8 +251,7 @@ jobs:
             git submodule update --init --recursive
 
       # バージョンを明示的に指定
-      - setup_remote_docker:
-          version: 20.10.14
+      - setup_remote_docker
 
       - aws-cli/setup
 
