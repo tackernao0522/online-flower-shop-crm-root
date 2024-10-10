@@ -356,9 +356,27 @@ jobs:
       - run:
           name: Update ECS task definition
           command: |
+            # 現在のタスク定義を取得
             TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition)
-            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"')
+
+            # 必要なフィールドのみを抽出し、新しいイメージを設定
+            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
+              family: .family,
+              taskRoleArn: .taskRoleArn,
+              executionRoleArn: .executionRoleArn,
+              networkMode: .networkMode,
+              containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"],
+              volumes: .volumes,
+              placementConstraints: .placementConstraints,
+              requiresCompatibilities: .requiresCompatibilities,
+              cpu: .cpu,
+              memory: .memory
+            }')
+
+            # 新しいタスク定義を登録
             NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
+
+            # 新しいリビジョン番号を取得
             NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
             echo "New task definition revision: $NEW_REVISION"
 
