@@ -229,20 +229,12 @@ jobs:
               npm test
             fi
 
-      - run:
-          name: Set job status
-          command: |
-            echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
-            source $BASH_ENV
-
       - slack/notify:
           event: fail
-          "text": "Job: ${CIRCLE_JOB}"
           template: basic_fail_1
 
       - slack/notify:
           event: pass
-          "text": "Job: ${CIRCLE_JOB}"
           template: basic_success_1
 
   # build-and-push-image:
