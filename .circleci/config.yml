@@ -2,7 +2,7 @@ version: 2.1
 
 orbs:
   node: circleci/node@5.0.2
-  slack: circleci/slack@4.1.0
+  slack: circleci/slack@4.5.0
   aws-ecr: circleci/aws-ecr@6.15.3
   aws-ecs: circleci/aws-ecs@2.1.0
   aws-cli: circleci/aws-cli@2.0.3
@@ -229,59 +229,15 @@ jobs:
               npm test
             fi
 
-      - run:
-          name: Set job status
-          command: |
-            echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
-            source $BASH_ENV
-
       - slack/notify:
           event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: Fail",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
+          channel: ${SLACK_CHANNEL_ID_DEV}
+          template: basic_fail_1
 
       - slack/notify:
           event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: Pass",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
+          channel: ${SLACK_CHANNEL_ID_DEV}
+          template: basic_success_1
 
   # build-and-push-image:
   #   docker:
