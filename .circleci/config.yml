@@ -236,12 +236,12 @@ jobs:
             source $BASH_ENV
 
       - slack/notify:
-          event: fail
+          event: fail,
           "text": "Job: ${CIRCLE_JOB}",
           template: basic_fail_1
 
       - slack/notify:
-          event: pass
+          event: pass,
           "text": "Job: ${CIRCLE_JOB}",
           template: basic_success_1
 
