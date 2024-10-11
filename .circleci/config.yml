@@ -275,7 +275,7 @@ jobs:
                     },
                     {
                       "type": "plain_text",
-                      "text": "Status: Pass",
+                      "text": "Status: <<pipeline.status>>",
                       "emoji": true
                     }
                   ]
