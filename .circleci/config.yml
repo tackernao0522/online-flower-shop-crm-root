@@ -2,7 +2,7 @@ version: 2.1
 
 orbs:
   node: circleci/node@5.0.2
-  slack: circleci/slack@4.1.0
+  slack: circleci/slack@4.12.5
   aws-ecr: circleci/aws-ecr@6.15.3
   aws-ecs: circleci/aws-ecs@2.1.0
   aws-cli: circleci/aws-cli@2.0.3
@@ -236,52 +236,12 @@ jobs:
             source $BASH_ENV
 
       - slack/notify:
+          template: basic_fail_1
           event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: Fail",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
 
       - slack/notify:
+          template: basic_success_1
           event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: ${CIRCLE_JOB_STATUS}",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
 
   # build-and-push-image:
   #   docker:
