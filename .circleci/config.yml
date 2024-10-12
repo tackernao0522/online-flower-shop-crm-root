@@ -345,12 +345,12 @@ jobs:
             echo "Describing image in ECR..."
             aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
 
-      - save_cache:
+- save_cache:
           paths:
             - /home/circleci/.docker
           key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
 
-- run:
+      - run:
           name: Update ECS task definition
           command: |
             TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition)
