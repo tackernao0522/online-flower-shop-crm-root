@@ -323,9 +323,6 @@ jobs:
             echo "New task definition revision: $NEW_REVISION"
       - run:
           name: Set job status
-          command: |
-            echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
-            source $BASH_ENV
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID_BUILD}
@@ -362,9 +359,6 @@ deploy-to-ecs:
           fi
     - run:
         name: Set job status
-        command: |
-          echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
-          source $BASH_ENV
     - slack/notify:
         event: fail
         channel: ${SLACK_CHANNEL_ID_DEPLOY}
