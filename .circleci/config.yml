@@ -381,51 +381,13 @@ jobs:
 
       - slack/notify:
           event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: Fail",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
+          channel: ${SLACK_CHANNEL_ID_BUILD}
+          template: basic_fail_1
 
       - slack/notify:
           event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: Pass",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
+          channel: ${SLACK_CHANNEL_ID_BUILD}
+          template: basic_success_1
 
   deploy-to-ecs:
     docker:
@@ -463,51 +425,13 @@ jobs:
 
       - slack/notify:
           event: fail
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: Fail",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
+          channel: ${SLACK_CHANNEL_ID_DEPLOY}
+          template: basic_fail_1
 
       - slack/notify:
           event: pass
-          channel: ${SLACK_CHANNEL_ID}
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "plain_text",
-                      "text": "Job: ${CIRCLE_JOB}",
-                      "emoji": true
-                    },
-                    {
-                      "type": "plain_text",
-                      "text": "Status: Pass",
-                      "emoji": true
-                    }
-                  ]
-                }
-              ]
-            }
+          channel: ${SLACK_CHANNEL_ID_DEPLOY}
+          template: basic_success_1
 
 workflows:
   version: 2
