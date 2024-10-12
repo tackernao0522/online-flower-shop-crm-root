@@ -91,6 +91,17 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[count.index].id
 }
 
+# S3 ゲートウェイエンドポイント
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.main.id
+  service_name = "com.amazonaws.${var.aws_region}.s3"
+  route_table_ids = aws_route_table.private[*].id
+
+  tags = {
+    Name = "${var.project_name}-s3-endpoint"
+  }
+}
+
 # 利用可能なAZのデータソース
 data "aws_availability_zones" "available" {
   state = "available"
@@ -286,7 +297,7 @@ resource "aws_lb_listener" "https" {
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-    certificate_arn   = aws_acm_certificate_validation.api_cert_validation_tokyo.certificate_arn  # 東京リージョンの証明書
+  certificate_arn   = aws_acm_certificate_validation.api_cert_validation_tokyo.certificate_arn  # 東京リージョンの証明書
 
   default_action {
     type             = "forward"
@@ -370,8 +381,8 @@ resource "aws_route53_record" "front_cert_validation" {
 
 # ACM証明書の検証完了待ち (Front)
 resource "aws_acm_certificate_validation" "front_cert_validation" {
-  provider              = aws.us_east_1
-  certificate_arn       = aws_acm_certificate.front_cert.arn
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.front_cert.arn
   validation_record_fqdns = [for record in aws_route53_record.front_cert_validation : record.fqdn]
 }
 
@@ -558,10 +569,16 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# ECRからのイメージプル権限を追加
+resource "aws_iam_role_policy_attachment" "ecs_execution_ecr_policy" {
+  role       = aws_iam_role.ecs_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
 # Security Group for ECS Tasks
 resource "aws_security_group" "ecs_tasks" {
   name        = "${var.project_name}-ecs-tasks-sg"
-    description = "Allow inbound access from the ALB only"
+  description = "Allow inbound access from the ALB only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -571,7 +588,6 @@ resource "aws_security_group" "ecs_tasks" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  # HTTPSトラフィックを許可するルール
   ingress {
     protocol        = "tcp"
     from_port       = 443
@@ -608,12 +624,11 @@ resource "aws_lb_target_group" "app" {
 
 # VPCエンドポイント（NAT Gatewayを使用しない場合）
 resource "aws_vpc_endpoint" "ecr_docker" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.ecr.dkr"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.ecs_tasks.id]
-
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
   tags = {
@@ -622,12 +637,11 @@ resource "aws_vpc_endpoint" "ecr_docker" {
 }
 
 resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.ecr.api"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.ecs_tasks.id]
-
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
   tags = {
@@ -636,12 +650,11 @@ resource "aws_vpc_endpoint" "ecr_api" {
 }
 
 resource "aws_vpc_endpoint" "cloudwatch_logs" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.logs"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.ecs_tasks.id]
-
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
   tags = {
@@ -651,12 +664,11 @@ resource "aws_vpc_endpoint" "cloudwatch_logs" {
 
 # ECS Agent 用 VPCエンドポイント
 resource "aws_vpc_endpoint" "ecs_agent" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.ecs-agent"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.ecs_tasks.id]
-
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ecs-agent"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
   tags = {
@@ -666,16 +678,41 @@ resource "aws_vpc_endpoint" "ecs_agent" {
 
 # SSM 用 VPCエンドポイント
 resource "aws_vpc_endpoint" "ssm" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.ssm"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = aws_subnet.private[*].id
-  security_group_ids = [aws_security_group.ecs_tasks.id]
-
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
 
   tags = {
     Name = "${var.project_name}-ssm-endpoint"
+  }
+}
+
+# VPCエンドポイント用のセキュリティグループ
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${var.project_name}-vpc-endpoints-sg"
+  description = "Security group for VPC endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "HTTPS from ECS tasks"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_tasks.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project_name}-vpc-endpoints-sg"
   }
 }
 
