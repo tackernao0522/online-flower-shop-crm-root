@@ -11,17 +11,14 @@ jobs:
   build-and-test:
     machine:
       image: ubuntu-2204:current
-
     steps:
       - checkout:
           submodules: false
-
       - add_ssh_keys:
           fingerprints:
             - "${CI_SSH_FINGERPRINT_ROOT}"
             - "${CI_SSH_FINGERPRINT_API}"
             - "${CI_SSH_FINGERPRINT_FRONT}"
-
       - run:
           name: Configure SSH for GitHub
           command: |
@@ -29,13 +26,11 @@ jobs:
             echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
             ssh-keyscan github.com >> ~/.ssh/known_hosts
             chmod 600 ~/.ssh/config
-
       - run:
           name: Checkout Submodules with SSH
           command: |
             git submodule sync
             git submodule update --init --recursive --depth 1
-
       - run:
           name: Check for API changes
           command: |
@@ -46,7 +41,6 @@ jobs:
               echo "Changes detected in API. Will run API tests."
               echo "export SKIP_API_TESTS=false" >> $BASH_ENV
             fi
-
       - run:
           name: Check for Frontend changes
           command: |
@@ -57,7 +51,6 @@ jobs:
               echo "Changes detected in Frontend. Will run Frontend tests."
               echo "export SKIP_FRONTEND_TESTS=false" >> $BASH_ENV
             fi
-
       - run:
           name: Install Required Packages
           command: |
@@ -65,7 +58,6 @@ jobs:
               sudo apt-get update
               sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
             fi
-
       - run:
           name: Install Composer
           command: |
@@ -73,7 +65,6 @@ jobs:
               curl -sS https://getcomposer.org/installer | php
               sudo mv composer.phar /usr/local/bin/composer
             fi
-
       - run:
           name: Debug Environment Variables
           command: |
@@ -83,7 +74,6 @@ jobs:
               echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
               echo "CI_MYSQL_ROOT_PASSWORD: ${CI_MYSQL_ROOT_PASSWORD}"
             fi
-
       - run:
           name: Configure MySQL
           command: |
@@ -95,7 +85,6 @@ jobs:
               sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "GRANT ALL PRIVILEGES ON ${CI_MYSQL_DATABASE}.* TO '${CI_MYSQL_USER}'@'localhost';"
               sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "FLUSH PRIVILEGES;"
             fi
-
       - run:
           name: Check MySQL Service
           command: |
@@ -106,7 +95,6 @@ jobs:
               sudo mysql -u ${CI_MYSQL_USER} -p"${CI_MYSQL_PASSWORD}" -e "SHOW DATABASES;"
             fi
           no_output_timeout: 1m
-
       - run:
           name: Restart MySQL Service if Needed
           command: |
@@ -115,12 +103,10 @@ jobs:
                 sudo systemctl restart mysql
               fi
             fi
-
       - restore_cache:
           keys:
             - composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
             - composer-v1-
-
       - run:
           name: Install Composer Dependencies
           command: |
@@ -128,12 +114,10 @@ jobs:
               cd ~/project/api/src
               composer install --no-interaction --prefer-dist
             fi
-
       - save_cache:
           key: composer-v1-{{ checksum "~/project/api/src/composer.lock" }}
           paths:
             - ~/project/api/src/vendor
-
       - run:
           name: Create and Debug .env file
           command: |
@@ -155,7 +139,6 @@ jobs:
               echo "Contents of .env file:"
               cat .env
             fi
-
       - run:
           name: Clear Config Cache
           command: |
@@ -164,7 +147,6 @@ jobs:
               php artisan config:clear
               php artisan cache:clear
             fi
-
       - run:
           name: Debug Database Connection
           command: |
@@ -183,7 +165,6 @@ jobs:
               echo "Attempting connection:"
               php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); }"
             fi
-
       - run:
           name: Run database migrations and seed
           command: |
@@ -191,7 +172,6 @@ jobs:
               cd ~/project/api/src
               php artisan migrate --force --seed
             fi
-
       - run:
           name: Run Laravel tests
           command: |
@@ -199,15 +179,12 @@ jobs:
               cd ~/project/api/src
               php artisan test
             fi
-
       - node/install:
           node-version: "18.17.0"
-
       - restore_cache:
           keys:
             - node-v1-{{ checksum "~/project/front/package-lock.json" }}
             - node-v1-
-
       - run:
           name: Install Node.js dependencies
           working_directory: ~/project/front
@@ -215,12 +192,10 @@ jobs:
             if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
               npm install
             fi
-
       - save_cache:
           key: node-v1-{{ checksum "~/project/front/package-lock.json" }}
           paths:
             - ~/project/front/node_modules
-
       - run:
           name: Run frontend tests
           working_directory: ~/project/front
@@ -228,286 +203,176 @@ jobs:
             if [ "$SKIP_FRONTEND_TESTS" = "false" ]; then
               npm test
             fi
-
       - slack/notify:
           event: fail
           channel: ${SLACK_CHANNEL_ID_DEV}
           template: basic_fail_1
-
       - slack/notify:
           event: pass
           channel: ${SLACK_CHANNEL_ID_DEV}
           template: basic_success_1
 
-  # build-and-push-image:
-  #   docker:
-  #     - image: cimg/base:stable
-  #   steps:
-  #     - checkout
-  #     - run:
-  #         name: Checkout submodules
-  #         command: |
-  #           git submodule sync
-  #           git submodule update --init --recursive
+  build-and-push-image:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - run:
+          name: Checkout submodules
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
+      - setup_remote_docker
+      - aws-cli/setup
+      - run:
+          name: Configure AWS default region
+          command: |
+            if [ -z "$AWS_DEFAULT_REGION" ]; then
+              echo "AWS_DEFAULT_REGION is not set. Exiting."
+              exit 1
+            fi
+            aws configure set default.region $AWS_DEFAULT_REGION --profile default
+      - run:
+          name: Get RDS endpoint and prepare .env.production
+          command: |
+            DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ofcrm-mysql --query "DBInstances[0].Endpoint.Address" --output text)
+            cd ./api/src
+            echo "APP_NAME=OFCRM" > .env.production
+            echo "APP_ENV=production" >> .env.production
+            echo "APP_KEY=${APP_KEY}" >> .env.production
+            echo "APP_DEBUG=false" >> .env.production
+            echo "APP_URL=https://api.tkb-tech.com" >> .env.production
+            echo "LOG_LEVEL=debug" >> .env.production
+            echo "DB_CONNECTION=mysql" >> .env.production
+            echo "DB_HOST=${DB_HOST}" >> .env.production
+            echo "DB_PORT=3306" >> .env.production
+            echo "DB_DATABASE=flowercrm_production" >> .env.production
+            echo "DB_USERNAME=${DB_USERNAME}" >> .env.production
+            echo "DB_PASSWORD=${DB_PASSWORD}" >> .env.production
+            echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
+      - restore_cache:
+          keys:
+            - docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
+      - run:
+          name: Set ECR URL and Build Docker Image
+          command: |
+            echo "Setting ECR URL..."
+            ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+            echo "export ECR_ENDPOINT=$ECR_ENDPOINT" >> $BASH_ENV
+            source $BASH_ENV
+            echo "ECR Endpoint: $ECR_ENDPOINT"
 
-  #     - setup_remote_docker
+            echo "Logging in to AWS ECR..."
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
 
-  #     - aws-cli/setup
+            echo "Building Docker image..."
+            docker build \
+              --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
+              --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
+              --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
+              --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
+              -t $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1} \
+              -f ./api/infra/php/Dockerfile.prod \
+              ./api
 
-  #     - run:
-  #         name: Configure AWS default region
-  #         command: |
-  #           if [ -z "$AWS_DEFAULT_REGION" ]; then
-  #             echo "AWS_DEFAULT_REGION is not set. Exiting."
-  #             exit 1
-  #           fi
-  #           aws configure set default.region $AWS_DEFAULT_REGION --profile default
+            if [ $? -ne 0 ]; then
+              echo "Docker build failed"
+              exit 1
+            fi
 
-  #     - run:
-  #         name: Get RDS endpoint and prepare .env.production
-  #         command: |
-  #           DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ofcrm-mysql --query "DBInstances[0].Endpoint.Address" --output text)
+            echo "Docker build successful. Listing images:"
+            docker images
 
-  #           cd ./api/src
-  #           echo "APP_NAME=OFCRM" > .env.production
-  #           echo "APP_ENV=production" >> .env.production
-  #           echo "APP_KEY=${APP_KEY}" >> .env.production
-  #           echo "APP_DEBUG=false" >> .env.production
-  #           echo "APP_URL=https://api.tkb-tech.com" >> .env.production
-  #           echo "LOG_LEVEL=debug" >> .env.production
+            echo "Pushing image to ECR..."
+            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
 
-  #           echo "DB_CONNECTION=mysql" >> .env.production
-  #           echo "DB_HOST=${DB_HOST}" >> .env.production
-  #           echo "DB_PORT=3306" >> .env.production
-  #           echo "DB_DATABASE=flowercrm_production" >> .env.production
-  #           echo "DB_USERNAME=${DB_USERNAME}" >> .env.production
-  #           echo "DB_PASSWORD=${DB_PASSWORD}" >> .env.production
+            if [ $? -ne 0 ]; then
+              echo "Failed to push image to ECR"
+              exit 1
+            fi
 
-  #           echo "BROADCAST_DRIVER=log" >> .env.production
-  #           echo "PUSHER_APP_ID=null" >> .env.production
-  #           echo "PUSHER_APP_KEY=null" >> .env.production
-  #           echo "PUSHER_APP_SECRET=null" >> .env.production
-  #           echo "PUSHER_HOST=null" >> .env.production
-  #           echo "PUSHER_PORT=null" >> .env.production
-  #           echo "PUSHER_SCHEME=https" >> .env.production
-  #           echo "PUSHER_APP_CLUSTER=null" >> .env.production
-  #           echo "LARAVEL_WEBSOCKETS_ENABLED=false" >> .env.production
+            echo "Image successfully pushed to ECR"
 
-  #           echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
-  #           echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
+            echo "Describing image in ECR..."
+            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
+      - save_cache:
+          paths:
+            - /home/circleci/.docker
+          key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
+      - run:
+          name: Update ECS task definition
+          command: |
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition)
 
-  #           echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
+            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
+              family: .family,
+              taskRoleArn: .taskRoleArn,
+              executionRoleArn: .executionRoleArn,
+              networkMode: .networkMode,
+              containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"],
+              volumes: .volumes,
+              placementConstraints: .placementConstraints,
+              requiresCompatibilities: .requiresCompatibilities,
+              cpu: .cpu,
+              memory: .memory
+            }')
 
-  #     - restore_cache:
-  #         keys:
-  #           - docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
+            NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
 
-  #     - run:
-  #         name: Set ECR URL and Build Docker Image
-  #         command: |
-  #           echo "Setting ECR URL..."
-  #           ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-  #           echo "export ECR_ENDPOINT=$ECR_ENDPOINT" >> $BASH_ENV
-  #           source $BASH_ENV
-  #           echo "ECR Endpoint: $ECR_ENDPOINT"
+            NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+            echo "New task definition revision: $NEW_REVISION"
+      - run:
+          name: Set job status
+          command: |
+            echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
+            source $BASH_ENV
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID_BUILD}
+          template: basic_fail_1
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID_BUILD}
+          template: basic_success_1
 
-  #           echo "Logging in to AWS ECR..."
-  #           aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
-
-  #           echo "Building Docker image..."
-  #           docker build \
-  #             --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
-  #             --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
-  #             --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
-  #             --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
-#             -t $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1} \
-#             -f ./api/infra/php/Dockerfile.prod \
-#             ./api
-
-#           if [ $? -ne 0 ]; then
-#             echo "Docker build failed"
-#             exit 1
-#           fi
-
-#           echo "Docker build successful. Listing images:"
-#           docker images
-
-#           echo "Pushing image to ECR..."
-#           docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
-
-#           if [ $? -ne 0 ]; then
-#             echo "Failed to push image to ECR"
-#             exit 1
-#           fi
-
-#           echo "Image successfully pushed to ECR"
-
-#           echo "Describing image in ECR..."
-#           aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
-
-#     - save_cache:
-#         paths:
-#           - /home/circleci/.docker
-#         key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
-
-#     - run:
-#         name: Update ECS task definition
-#         command: |
-#           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition)
-
-#           NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
-#             family: .family,
-#             taskRoleArn: .taskRoleArn,
-#             executionRoleArn: .executionRoleArn,
-#             networkMode: .networkMode,
-#             containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"],
-#             volumes: .volumes,
-#             placementConstraints: .placementConstraints,
-#             requiresCompatibilities: .requiresCompatibilities,
-#             cpu: .cpu,
-#             memory: .memory
-#           }')
-
-#           NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
-
-#           NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
-#           echo "New task definition revision: $NEW_REVISION"
-
-#     - run:
-#         name: Set job status
-#         command: |
-#           echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
-#           source $BASH_ENV
-
-#     - slack/notify:
-#         event: fail
-#         channel: ${SLACK_CHANNEL_ID}
-#         custom: |
-#           {
-#             "blocks": [
-#               {
-#                 "type": "section",
-#                 "fields": [
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Job: ${CIRCLE_JOB}",
-#                     "emoji": true
-#                   },
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Status: Fail",
-#                     "emoji": true
-#                   }
-#                 ]
-#               }
-#             ]
-#           }
-
-#     - slack/notify:
-#         event: pass
-#         channel: ${SLACK_CHANNEL_ID}
-#         custom: |
-#           {
-#             "blocks": [
-#               {
-#                 "type": "section",
-#                 "fields": [
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Job: ${CIRCLE_JOB}",
-#                     "emoji": true
-#                   },
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Status: Pass",
-#                     "emoji": true
-#                   }
-#                 ]
-#               }
-#             ]
-#           }
-
-# deploy-to-ecs:
-#   docker:
-#     - image: cimg/base:stable
-#   steps:
-#     - aws-cli/setup
-#     - run:
-#         name: Deploy to ECS
-#         command: |
-#           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query 'taskDefinition.taskDefinitionArn' --output text)
-#           aws ecs update-service --cluster ofcrm-cluster --service ofcrm-service --task-definition $TASK_DEFINITION --force-new-deployment
-
-#     - run:
-#         name: Wait for service to be stable
-#         command: |
-#           aws ecs wait services-stable --cluster ofcrm-cluster --services ofcrm-service
-
-#     - run:
-#         name: Verify deployment
-#         command: |
-#           HEALTH_CHECK_URL="https://api.tkb-tech.com/health"
-#           HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
-#           if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
-#             echo "Deployment successful. Health check passed."
-#           else
-#             echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
-#             exit 1
-#           fi
-
-#     - run:
-#         name: Set job status
-#         command: |
-#           echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
-#           source $BASH_ENV
-
-#     - slack/notify:
-#         event: fail
-#         channel: ${SLACK_CHANNEL_ID}
-#         custom: |
-#           {
-#             "blocks": [
-#               {
-#                 "type": "section",
-#                 "fields": [
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Job: ${CIRCLE_JOB}",
-#                     "emoji": true
-#                   },
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Status: Fail",
-#                     "emoji": true
-#                   }
-#                 ]
-#               }
-#             ]
-#           }
-
-#     - slack/notify:
-#         event: pass
-#         channel: ${SLACK_CHANNEL_ID}
-#         custom: |
-#           {
-#             "blocks": [
-#               {
-#                 "type": "section",
-#                 "fields": [
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Job: ${CIRCLE_JOB}",
-#                     "emoji": true
-#                   },
-#                   {
-#                     "type": "plain_text",
-#                     "text": "Status: Pass",
-#                     "emoji": true
-#                   }
-#                 ]
-#               }
-#             ]
-#           }
+deploy-to-ecs:
+  docker:
+    - image: cimg/base:stable
+  steps:
+    - aws-cli/setup
+    - run:
+        name: Deploy to ECS
+        command: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster ofcrm-cluster --service ofcrm-service --task-definition $TASK_DEFINITION --force-new-deployment
+    - run:
+        name: Wait for service to be stable
+        command: |
+          aws ecs wait services-stable --cluster ofcrm-cluster --services ofcrm-service
+    - run:
+        name: Verify deployment
+        command: |
+          HEALTH_CHECK_URL="https://api.tkb-tech.com/health"
+          HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
+          if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+            echo "Deployment successful. Health check passed."
+          else
+            echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
+            exit 1
+          fi
+    - run:
+        name: Set job status
+        command: |
+          echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
+          source $BASH_ENV
+    - slack/notify:
+        event: fail
+        channel: ${SLACK_CHANNEL_ID_DEPLOY}
+        template: basic_fail_1
+    - slack/notify:
+        event: pass
+        channel: ${SLACK_CHANNEL_ID_DEPLOY}
+        template: basic_success_1
 
 workflows:
   version: 2
@@ -515,17 +380,17 @@ workflows:
     jobs:
       - build-and-test:
           context: my-context
-      # - build-and-push-image:
-      #     context: my-production-context
-      #     requires:
-      #       - build-and-test
-      #     filters:
-      #       branches:
-      #         only: main
-      # - deploy-to-ecs:
-      #     context: my-production-context
-      #     requires:
-      #       - build-and-push-image
-      #     filters:
-      #       branches:
-      #         only: main
+      - build-and-push-image:
+          context: my-production-context
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
+      - deploy-to-ecs:
+          context: my-production-context
+          requires:
+            - build-and-push-image
+          filters:
+            branches:
+              only: main
