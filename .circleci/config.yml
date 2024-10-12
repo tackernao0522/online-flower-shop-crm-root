@@ -324,26 +324,26 @@ jobs:
             -f ./api/infra/php/Dockerfile.prod \
             ./api
 
-          if [ $? -ne 0 ]; then
-            echo "Docker build failed"
-            exit 1
-          fi
+            if [ $? -ne 0 ]; then
+              echo "Docker build failed"
+              exit 1
+            fi
 
-          echo "Docker build successful. Listing images:"
-          docker images
+            echo "Docker build successful. Listing images:"
+            docker images
 
-          echo "Pushing image to ECR..."
-          docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
+            echo "Pushing image to ECR..."
+            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
 
-          if [ $? -ne 0 ]; then
-            echo "Failed to push image to ECR"
-            exit 1
-          fi
+            if [ $? -ne 0 ]; then
+              echo "Failed to push image to ECR"
+              exit 1
+            fi
 
-          echo "Image successfully pushed to ECR"
+            echo "Image successfully pushed to ECR"
 
-          echo "Describing image in ECR..."
-          aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
+            echo "Describing image in ECR..."
+            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
 
     - save_cache:
         paths:
