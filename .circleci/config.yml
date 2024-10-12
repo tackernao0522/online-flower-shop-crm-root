@@ -242,63 +242,16 @@ jobs:
             echo "APP_KEY=${APP_KEY}" >> .env.production
             echo "APP_DEBUG=false" >> .env.production
             echo "APP_URL=https://api.tkb-tech.com" >> .env.production
-            echo "LOG_LEVEL=debug" >> .env.production
             echo "DB_CONNECTION=mysql" >> .env.production
             echo "DB_HOST=${DB_HOST}" >> .env.production
             echo "DB_PORT=3306" >> .env.production
             echo "DB_DATABASE=flowercrm_production" >> .env.production
             echo "DB_USERNAME=${DB_USERNAME}" >> .env.production
             echo "DB_PASSWORD=${DB_PASSWORD}" >> .env.production
-            echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
-      - restore_cache:
-          keys:
-            - docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
-      - run:
-          name: Set ECR URL and Build Docker Image
-          command: |
-            echo "Setting ECR URL..."
-            ECR_ENDPOINT=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-            echo "export ECR_ENDPOINT=$ECR_ENDPOINT" >> $BASH_ENV
-            source $BASH_ENV
-            echo "ECR Endpoint: $ECR_ENDPOINT"
-
-            echo "Logging in to AWS ECR..."
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_ENDPOINT
-
-            echo "Building Docker image..."
-            docker build \
-              --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
-              --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
-              --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
-              --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
-              -t $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1} \
-              -f ./api/infra/php/Dockerfile.prod \
-              ./api
-
-            if [ $? -ne 0 ]; then
-              echo "Docker build failed"
-              exit 1
-            fi
-
-            echo "Docker build successful. Listing images:"
-            docker images
-
-            echo "Pushing image to ECR..."
-            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
-
-            if [ $? -ne 0 ]; then
-              echo "Failed to push image to ECR"
-              exit 1
-            fi
-
-            echo "Image successfully pushed to ECR"
-
-            echo "Describing image in ECR..."
-            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
       - save_cache:
+          key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
           paths:
             - /home/circleci/.docker
-          key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
       - run:
           name: Update ECS task definition
           command: |
@@ -324,13 +277,14 @@ jobs:
       - run:
           name: Set job status
       - slack/notify:
-          event: fail
-          channel: ${SLACK_CHANNEL_ID_BUILD}
-          template: basic_fail_1
+          event: "fail"
+          channel: "${SLACK_CHANNEL_ID_BUILD}"
+          template: "basic_fail_1"
+
       - slack/notify:
-          event: pass
-          channel: ${SLACK_CHANNEL_ID_BUILD}
-          template: basic_success_1
+          event: "pass"
+          channel: "${SLACK_CHANNEL_ID_BUILD}"
+          template: "basic_success_1"
 
 deploy-to-ecs:
   docker:
