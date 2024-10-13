@@ -8,6 +8,8 @@ provider "aws" {
   region = "us-east-1"
 }
 
+data "aws_caller_identity" "current" {}
+
 # VPC設定
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -474,24 +476,24 @@ resource "aws_ecs_task_definition" "app" {
       containerPort = 80
       hostPort      = 80
     }]
+    secrets = [
+      { name = "APP_KEY", valueFrom = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:ofcrm-api-secrets:APP_KEY" },
+      { name = "DB_USERNAME", valueFrom = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:ofcrm-api-secrets:DB_USERNAME" },
+      { name = "DB_PASSWORD", valueFrom = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:ofcrm-api-secrets:DB_PASSWORD" },
+      { name = "JWT_SECRET", valueFrom = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:ofcrm-api-secrets:JWT_SECRET" },
+      { name = "PUSHER_APP_KEY", valueFrom = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:ofcrm-api-secrets:PUSHER_APP_KEY" },
+      { name = "PUSHER_APP_SECRET", valueFrom = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:ofcrm-api-secrets:PUSHER_APP_SECRET" }
+    ]
     environment = [
       { name = "APP_ENV", value = "production" },
-      { name = "APP_KEY", value = var.app_key },
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
       { name = "DB_HOST", value = aws_db_instance.mysql.address },
       { name = "DB_DATABASE", value = var.db_name },
-      { name = "DB_USERNAME", value = var.db_username },
-      { name = "DB_PASSWORD", value = var.db_password },
       { name = "FRONTEND_URL", value = "https://front.${var.domain_name}" },
-      { name = "BROADCAST_DRIVER", value = "pusher" },
-      { name = "PUSHER_APP_ID", value = var.pusher_app_id },
-      { name = "PUSHER_APP_KEY", value = var.pusher_app_key },
-      { name = "PUSHER_APP_SECRET", value = var.pusher_app_secret },
       { name = "PUSHER_HOST", value = "api.${var.domain_name}" },
       { name = "PUSHER_PORT", value = "443" },
       { name = "PUSHER_SCHEME", value = "https" },
-      { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
-      { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" }
+      { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster }
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -501,7 +503,6 @@ resource "aws_ecs_task_definition" "app" {
         awslogs-stream-prefix = "ecs"
       }
     }
-    # Execute Commandを有効にする
     enableExecuteCommand = true
   }])
 }
@@ -528,15 +529,32 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 }
 
+# Secrets Managerからシークレットを読み込むIAMポリシー
+resource "aws_iam_policy" "ecs_secrets_policy" {
+  name = "${var.project_name}-secrets-access"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = "secretsmanager:GetSecretValue",
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:ofcrm-api-secrets"
+      }
+    ]
+  })
+}
+
+# ECS Task RoleにSecrets Managerのポリシーをアタッチ
+resource "aws_iam_role_policy_attachment" "ecs_secrets_policy_attachment" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = aws_iam_policy.ecs_secrets_policy.arn
+}
+
+# ECS Task RoleにAmazonECSTaskExecutionRolePolicyをアタッチ（保持）
 resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
   role       = aws_iam_role.ecs_task_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# S3へのアクセスを許可するポリシー
-resource "aws_iam_role_policy_attachment" "ecs_task_s3_read_policy" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
 }
 
 # Execute Command用のIAMポリシー
