@@ -283,15 +283,15 @@ jobs:
             echo "DB_USERNAME=${DB_USERNAME}" >> .env.production
             echo "DB_PASSWORD=${DB_PASSWORD}" >> .env.production
 
-            echo "BROADCAST_DRIVER=log" >> .env.production
-            echo "PUSHER_APP_ID=null" >> .env.production
-            echo "PUSHER_APP_KEY=null" >> .env.production
-            echo "PUSHER_APP_SECRET=null" >> .env.production
-            echo "PUSHER_HOST=null" >> .env.production
-            echo "PUSHER_PORT=null" >> .env.production
+            echo "BROADCAST_DRIVER=pusher" >> .env.production
+            echo "PUSHER_APP_ID=${PUSHER_APP_ID}" >> .env.production
+            echo "PUSHER_APP_KEY=${PUSHER_APP_KEY}" >> .env.production
+            echo "PUSHER_APP_SECRET=${PUSHER_APP_SECRET}" >> .env.production
+            echo "PUSHER_HOST=api.tkb-tech.com" >> .env.production
+            echo "PUSHER_PORT=443" >> .env.production
             echo "PUSHER_SCHEME=https" >> .env.production
-            echo "PUSHER_APP_CLUSTER=null" >> .env.production
-            echo "LARAVEL_WEBSOCKETS_ENABLED=false" >> .env.production
+            echo "PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER}" >> .env.production
+            echo "LARAVEL_WEBSOCKETS_ENABLED=true" >> .env.production
 
             echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
             echo "JWT_ALGO=${JWT_ALGO}" >> .env.production
