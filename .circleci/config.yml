@@ -144,12 +144,12 @@ jobs:
               sed -i "s#DB_DATABASE=.*#DB_DATABASE=${CI_MYSQL_DATABASE}#" .env
               sed -i "s#DB_USERNAME=.*#DB_USERNAME=${CI_MYSQL_USER}#" .env
               sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${CI_MYSQL_PASSWORD}#" .env
-              sed -i "s#PUSHER_APP_ID=.*#PUSHER_APP_ID=null#" .env
-              sed -i "s#PUSHER_APP_KEY=.*#PUSHER_APP_KEY=null#" .env
-              sed -i "s#PUSHER_APP_SECRET=.*#PUSHER_APP_SECRET=null#" .env
-              sed -i "s#PUSHER_APP_CLUSTER=.*#PUSHER_APP_CLUSTER=null#" .env
-              sed -i "s#BROADCAST_DRIVER=.*#BROADCAST_DRIVER=log#" .env
-              sed -i "s#LARAVEL_WEBSOCKETS_ENABLED=.*#LARAVEL_WEBSOCKETS_ENABLED=false#" .env
+              sed -i "s#PUSHER_APP_ID=.*#PUSHER_APP_ID=${CI_PUSHER_APP_ID}#" .env
+              sed -i "s#PUSHER_APP_KEY=.*#PUSHER_APP_KEY=${CI_PUSHER_APP_KEY}#" .env
+              sed -i "s#PUSHER_APP_SECRET=.*#PUSHER_APP_SECRET=${CI_PUSHER_APP_SECRET}#" .env
+              sed -i "s#PUSHER_APP_CLUSTER=.*#PUSHER_APP_CLUSTER=${CI_PUSHER_APP_CLUSTER}#" .env
+              sed -i "s#BROADCAST_DRIVER=.*#BROADCAST_DRIVER=pusher#" .env
+              sed -i "s#LARAVEL_WEBSOCKETS_ENABLED=.*#LARAVEL_WEBSOCKETS_ENABLED=true#" .env
               php artisan key:generate
               php artisan jwt:secret
               echo "Contents of .env file:"
@@ -176,8 +176,7 @@ jobs:
               echo "CI_MYSQL_PASSWORD: ${CI_MYSQL_PASSWORD}"
               echo "MySQL Version:"
               mysql -h127.0.0.1 -u"${CI_MYSQL_USER}" -p"${CI_MYSQL_PASSWORD}" -e "SELECT VERSION();" || echo "Failed to connect with user"
-              echo "MySQL Users:"
-              sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
+              echo "MySQL Users:" sudo mysql -u root -p"${CI_MYSQL_ROOT_PASSWORD}" -e "SELECT user, host FROM mysql.user;"
               echo "Database connection details:"
               php artisan tinker --execute="print_r(config('database.connections.mysql'));"
               echo "Attempting connection:"
@@ -283,15 +282,15 @@ jobs:
             echo "DB_USERNAME=${DB_USERNAME}" >> .env.production
             echo "DB_PASSWORD=${DB_PASSWORD}" >> .env.production
 
-            echo "BROADCAST_DRIVER=log" >> .env.production
-            echo "PUSHER_APP_ID=null" >> .env.production
-            echo "PUSHER_APP_KEY=null" >> .env.production
-            echo "PUSHER_APP_SECRET=null" >> .env.production
-            echo "PUSHER_HOST=null" >> .env.production
-            echo "PUSHER_PORT=null" >> .env.production
+            echo "BROADCAST_DRIVER=pusher" >> .env.production
+            echo "PUSHER_APP_ID=${PUSHER_APP_ID}" >> .env.production
+            echo "PUSHER_APP_KEY=${PUSHER_APP_KEY}" >> .env.production
+            echo "PUSHER_APP_SECRET=${PUSHER_APP_SECRET}" >> .env.production
+            echo "PUSHER_HOST=api.tkb-tech.com" >> .env.production
+            echo "PUSHER_PORT=443" >> .env.production
             echo "PUSHER_SCHEME=https" >> .env.production
-            echo "PUSHER_APP_CLUSTER=null" >> .env.production
-            echo "LARAVEL_WEBSOCKETS_ENABLED=false" >> .env.production
+            echo "PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER}" >> .env.production
+            echo "LARAVEL_WEBSOCKETS_ENABLED=true" >> .env.production
 
             echo "JWT_SECRET=${JWT_SECRET}" >> .env.production
             echo "JWT_ALGO=${JWT_ALGO}" >> .env.production

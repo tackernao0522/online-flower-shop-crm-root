@@ -39,3 +39,24 @@ variable "app_key" {
   type        = string
   sensitive   = true
 }
+
+variable "pusher_app_id" {
+  description = "Pusher App ID"
+  type        = string
+}
+
+variable "pusher_app_key" {
+  description = "Pusher App Key"
+  type        = string
+}
+
+variable "pusher_app_secret" {
+  description = "Pusher App Secret"
+  type        = string
+  sensitive   = true
+}
+
+variable "pusher_app_cluster" {
+  description = "Pusher App Cluster"
+  type        = string
+}

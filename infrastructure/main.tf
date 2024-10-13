@@ -482,7 +482,16 @@ resource "aws_ecs_task_definition" "app" {
       { name = "DB_DATABASE", value = var.db_name },
       { name = "DB_USERNAME", value = var.db_username },
       { name = "DB_PASSWORD", value = var.db_password },
-      { name = "FRONTEND_URL", value = "https://front.${var.domain_name}" }
+      { name = "FRONTEND_URL", value = "https://front.${var.domain_name}" },
+      { name = "BROADCAST_DRIVER", value = "pusher" },
+      { name = "PUSHER_APP_ID", value = var.pusher_app_id },
+      { name = "PUSHER_APP_KEY", value = var.pusher_app_key },
+      { name = "PUSHER_APP_SECRET", value = var.pusher_app_secret },
+      { name = "PUSHER_HOST", value = "api.${var.domain_name}" },
+      { name = "PUSHER_PORT", value = "443" },
+      { name = "PUSHER_SCHEME", value = "https" },
+      { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
+      { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
