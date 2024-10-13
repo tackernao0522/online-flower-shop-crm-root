@@ -492,6 +492,8 @@ resource "aws_ecs_task_definition" "app" {
         awslogs-stream-prefix = "ecs"
       }
     }
+    # Execute Commandを有効にする
+    enableExecuteCommand = true
   }])
 }
 
@@ -528,6 +530,28 @@ resource "aws_iam_role_policy_attachment" "ecs_task_s3_read_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
 }
 
+# Execute Command用のIAMポリシー
+resource "aws_iam_role_policy" "ecs_task_ssm_policy" {
+  name = "${var.project_name}-ecs-task-ssm-policy"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # ECS Service
 resource "aws_ecs_service" "app" {
   name            = "${var.project_name}-service"
@@ -546,6 +570,9 @@ resource "aws_ecs_service" "app" {
     container_name   = "${var.project_name}-app"
     container_port   = 80
   }
+
+  # Execute Commandを有効にする
+  enable_execute_command = true
 
   depends_on = [aws_lb_listener.https]
 }
