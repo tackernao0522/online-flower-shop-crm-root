@@ -351,11 +351,6 @@ jobs:
             docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
 
             if [ $? -ne 0 ]; then
-              echo "Failed to push image to EC"
-echo "Pushing image to ECR..."
-            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
-
-            if [ $? -ne 0 ]; then
               echo "Failed to push image to ECR"
               exit 1
             fi
@@ -409,49 +404,49 @@ echo "Pushing image to ECR..."
           channel: ${SLACK_CHANNEL_ID_BUILD}
           template: basic_success_1
 
-          deploy-to-ecs:
-            docker:
-              - image: cimg/base:stable
-            steps:
-              - aws-cli/setup
-              - run:
-                  name: Deploy to ECS
-                  command: |
-                    TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query 'taskDefinition.taskDefinitionArn' --output text)
-                    aws ecs update-service --cluster ofcrm-cluster --service ofcrm-service --task-definition $TASK_DEFINITION --force-new-deployment
+  deploy-to-ecs:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - aws-cli/setup
+      - run:
+          name: Deploy to ECS
+          command: |
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query 'taskDefinition.taskDefinitionArn' --output text)
+            aws ecs update-service --cluster ofcrm-cluster --service ofcrm-service --task-definition $TASK_DEFINITION --force-new-deployment
 
-              - run:
-                  name: Wait for service to be stable
-                  command: |
-                    aws ecs wait services-stable --cluster ofcrm-cluster --services ofcrm-service
+      - run:
+          name: Wait for service to be stable
+          command: |
+            aws ecs wait services-stable --cluster ofcrm-cluster --services ofcrm-service
 
-              - run:
-                  name: Verify deployment
-                  command: |
-                    HEALTH_CHECK_URL="https://api.tkb-tech.com/health"
-                    HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
-                    if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
-                      echo "Deployment successful. Health check passed."
-                    else
-                      echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
-                      exit 1
-                    fi
+      - run:
+          name: Verify deployment
+          command: |
+            HEALTH_CHECK_URL="https://api.tkb-tech.com/health"
+            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
+            if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+              echo "Deployment successful. Health check passed."
+            else
+              echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
+              exit 1
+            fi
 
-              - run:
-                  name: Set job status
-                  command: |
-                    echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
-                    source $BASH_ENV
+      - run:
+          name: Set job status
+          command: |
+            echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
+            source $BASH_ENV
 
-              - slack/notify:
-                  event: fail
-                  channel: ${SLACK_CHANNEL_ID_DEPLOY}
-                  template: basic_fail_1
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID_DEPLOY}
+          template: basic_fail_1
 
-              - slack/notify:
-                  event: pass
-                  channel: ${SLACK_CHANNEL_ID_DEPLOY}
-                  template: basic_success_1
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID_DEPLOY}
+          template: basic_success_1
 
 workflows:
   version: 2
