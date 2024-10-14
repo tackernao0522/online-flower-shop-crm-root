@@ -255,6 +255,21 @@ jobs:
       - aws-cli/setup
 
       - run:
+          name: Install AWS SDK for PHP
+          command: |
+            cd ./api/src
+            composer require aws/aws-sdk-php aws/aws-sdk-php-laravel
+
+      - run:
+          name: Update .env.production for Secrets Manager
+          command: |
+            cd ./api/src
+            echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> .env.production
+            echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> .env.production
+            echo "AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}" >> .env.production
+            echo "AWS_SECRETS_MANAGER_SECRET_NAME=${AWS_SECRETS_MANAGER_SECRET_NAME}" >> .env.production
+
+      - run:
           name: Configure AWS default region
           command: |
             if [ -z "$AWS_DEFAULT_REGION" ]; then
@@ -320,6 +335,8 @@ jobs:
               --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
               --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
               --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
+              --build-arg AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION} \
+              --build-arg AWS_SECRETS_MANAGER_SECRET_NAME=${AWS_SECRETS_MANAGER_SECRET_NAME} \
             -t $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1} \
             -f ./api/infra/php/Dockerfile.prod \
             ./api

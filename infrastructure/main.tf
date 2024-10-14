@@ -457,6 +457,25 @@ resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
 }
 
+# Secrets Manager for production secrets
+resource "aws_secretsmanager_secret" "app_secrets" {
+  name = "${var.project_name}-app-secrets"
+}
+
+resource "aws_secretsmanager_secret_version" "app_secrets" {
+  secret_id = aws_secretsmanager_secret.app_secrets.id
+  secret_string = jsonencode({
+    APP_KEY             = var.app_key
+    DB_USERNAME         = var.db_username
+    DB_PASSWORD         = var.db_password
+    PUSHER_APP_ID       = var.pusher_app_id
+    PUSHER_APP_KEY      = var.pusher_app_key
+    PUSHER_APP_SECRET   = var.pusher_app_secret
+    PUSHER_APP_CLUSTER  = var.pusher_app_cluster
+    JWT_SECRET          = var.jwt_secret
+  })
+}
+
 # ECS Task Definition
 resource "aws_ecs_task_definition" "app" {
   family                   = "${var.project_name}-app"
@@ -476,22 +495,27 @@ resource "aws_ecs_task_definition" "app" {
     }]
     environment = [
       { name = "APP_ENV", value = "production" },
-      { name = "APP_KEY", value = var.app_key },
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
       { name = "DB_HOST", value = aws_db_instance.mysql.address },
       { name = "DB_DATABASE", value = var.db_name },
-      { name = "DB_USERNAME", value = var.db_username },
-      { name = "DB_PASSWORD", value = var.db_password },
       { name = "FRONTEND_URL", value = "https://front.${var.domain_name}" },
       { name = "BROADCAST_DRIVER", value = "pusher" },
-      { name = "PUSHER_APP_ID", value = var.pusher_app_id },
-      { name = "PUSHER_APP_KEY", value = var.pusher_app_key },
-      { name = "PUSHER_APP_SECRET", value = var.pusher_app_secret },
       { name = "PUSHER_HOST", value = "api.${var.domain_name}" },
       { name = "PUSHER_PORT", value = "443" },
       { name = "PUSHER_SCHEME", value = "https" },
-      { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
-      { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" }
+      { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" },
+      { name = "AWS_DEFAULT_REGION", value = var.aws_region },
+      { name = "AWS_SECRETS_MANAGER_SECRET_NAME", value = aws_secretsmanager_secret.app_secrets.name }
+    ]
+    secrets = [
+      { name = "APP_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:APP_KEY::" },
+      { name = "DB_USERNAME", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:DB_USERNAME::" },
+      { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:DB_PASSWORD::" },
+      { name = "PUSHER_APP_ID", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_ID::" },
+      { name = "PUSHER_APP_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_KEY::" },
+      { name = "PUSHER_APP_SECRET", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_SECRET::" },
+      { name = "PUSHER_APP_CLUSTER", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_CLUSTER::" },
+      { name = "JWT_SECRET", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:JWT_SECRET::" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -504,6 +528,12 @@ resource "aws_ecs_task_definition" "app" {
     # Execute Commandを有効にする
     enableExecuteCommand = true
   }])
+}
+
+# ECS Task Execution Roleに Secrets Managerへのアクセス権限を追加
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_secrets_policy" {
+  role       = aws_iam_role.ecs_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
 }
 
 # CloudWatch Logs group for ECS
