@@ -241,7 +241,7 @@ jobs:
 
   build-and-push-image:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/php:8.1
     steps:
       - checkout
       - run:
@@ -253,14 +253,6 @@ jobs:
       - setup_remote_docker
 
       - aws-cli/setup
-
-      - run:
-          name: Install Composer
-          command: |
-            php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-            php composer-setup.php
-            php -r "unlink('composer-setup.php');"
-            sudo mv composer.phar /usr/local/bin/composer
 
       - run:
           name: Install AWS SDK for PHP
