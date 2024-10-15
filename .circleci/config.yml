@@ -241,7 +241,7 @@ jobs:
 
   build-and-push-image:
     docker:
-      - image: cimg/php:8.1
+      - image: cimg/base:stable
     steps:
       - checkout
       - run:
@@ -253,19 +253,6 @@ jobs:
       - setup_remote_docker
 
       - aws-cli/setup
-
-      - run:
-          name: Install AWS SDK for PHP
-          command: |
-            cd ./api/src
-            composer require aws/aws-sdk-php aws/aws-sdk-php-laravel
-
-      - run:
-          name: Update .env.production for Secrets Manager
-          command: |
-            cd ./api/src
-            echo "AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}" >> .env.production
-            echo "AWS_SECRETS_MANAGER_SECRET_NAME=${AWS_SECRETS_MANAGER_SECRET_NAME}" >> .env.production
 
       - run:
           name: Configure AWS default region
@@ -333,8 +320,6 @@ jobs:
               --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
               --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
               --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
-              --build-arg AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION} \
-              --build-arg AWS_SECRETS_MANAGER_SECRET_NAME=${AWS_SECRETS_MANAGER_SECRET_NAME} \
             -t $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1} \
             -f ./api/infra/php/Dockerfile.prod \
             ./api
@@ -347,18 +332,18 @@ jobs:
             echo "Docker build successful. Listing images:"
             docker images
 
-      - run:
-          name: Check Composer log
-          command: |
-            CONTAINER_ID=$(docker create $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1})
-            docker cp $CONTAINER_ID:/tmp/composer_log.txt ./composer_log.txt || echo "Failed to copy composer_log.txt from container"
-            docker rm $CONTAINER_ID
-            if [ -f "./composer_log.txt" ]; then
-              echo "Composer log contents:"
-              cat ./composer_log.txt
-            else
-              echo "composer_log.txt not found"
+            echo "Pushing image to ECR..."
+            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
+
+            if [ $? -ne 0 ]; then
+              echo "Failed to push image to ECR"
+              exit 1
             fi
+
+            echo "Image successfully pushed to ECR"
+
+            echo "Describing image in ECR..."
+            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
 
       - save_cache:
           paths:
@@ -373,7 +358,7 @@ jobs:
             NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
               family: .family,
               taskRoleArn: .taskRoleArn,
-              executionRoleArn: "'${ECS_EXECUTION_ROLE_ARN}'",
+              executionRoleArn: .executionRoleArn,
               networkMode: .networkMode,
               containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"],
               volumes: .volumes,

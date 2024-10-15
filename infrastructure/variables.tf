@@ -62,7 +62,7 @@ variable "pusher_app_cluster" {
 }
 
 variable "jwt_secret" {
-  description = "JWT secret key for authentication"
+  description = "JWT secret for authentication"
   type        = string
   sensitive   = true
 }
