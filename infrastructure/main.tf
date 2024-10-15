@@ -457,6 +457,12 @@ resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
 }
 
+# CloudWatch Logs group for ECS
+resource "aws_cloudwatch_log_group" "ecs_logs" {
+  name              = "/ecs/${var.project_name}"
+  retention_in_days = 30
+}
+
 # Secrets Manager for production secrets
 resource "aws_secretsmanager_secret" "app_secrets" {
   name = "${var.project_name}-app-secrets"
@@ -476,70 +482,31 @@ resource "aws_secretsmanager_secret_version" "app_secrets" {
   })
 }
 
-# ECS Task Definition
-resource "aws_ecs_task_definition" "app" {
-  family                   = "${var.project_name}-app"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
-  execution_role_arn       = aws_iam_role.ecs_execution_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
+# ECS Task Execution Role
+resource "aws_iam_role" "ecs_execution_role" {
+  name = "${var.project_name}-ecs-execution-role"
 
-  container_definitions = jsonencode([{
-    name  = "${var.project_name}-app"
-    image = "${aws_ecr_repository.app.repository_url}:latest"
-    portMappings = [{
-      containerPort = 80
-      hostPort      = 80
-    }]
-    environment = [
-      { name = "APP_ENV", value = "production" },
-      { name = "APP_URL", value = "https://api.${var.domain_name}" },
-      { name = "DB_HOST", value = aws_db_instance.mysql.address },
-      { name = "DB_DATABASE", value = var.db_name },
-      { name = "FRONTEND_URL", value = "https://front.${var.domain_name}" },
-      { name = "BROADCAST_DRIVER", value = "pusher" },
-      { name = "PUSHER_HOST", value = "api.${var.domain_name}" },
-      { name = "PUSHER_PORT", value = "443" },
-      { name = "PUSHER_SCHEME", value = "https" },
-      { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" },
-      { name = "AWS_DEFAULT_REGION", value = var.aws_region },
-      { name = "AWS_SECRETS_MANAGER_SECRET_NAME", value = aws_secretsmanager_secret.app_secrets.name }
-    ]
-    secrets = [
-      { name = "APP_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:APP_KEY::" },
-      { name = "DB_USERNAME", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:DB_USERNAME::" },
-      { name = "DB_PASSWORD", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:DB_PASSWORD::" },
-      { name = "PUSHER_APP_ID", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_ID::" },
-      { name = "PUSHER_APP_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_KEY::" },
-      { name = "PUSHER_APP_SECRET", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_SECRET::" },
-      { name = "PUSHER_APP_CLUSTER", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:PUSHER_APP_CLUSTER::" },
-      { name = "JWT_SECRET", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:JWT_SECRET::" }
-    ]
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = "/ecs/${var.project_name}"
-        awslogs-region        = var.aws_region
-        awslogs-stream-prefix = "ecs"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
       }
-    }
-    # Execute Commandを有効にする
-    enableExecuteCommand = true
-  }])
+    }]
+  })
 }
 
-# ECS Task Execution Roleに Secrets Managerへのアクセス権限を追加
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_secrets_policy" {
+resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
   role       = aws_iam_role.ecs_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# CloudWatch Logs group for ECS
-resource "aws_cloudwatch_log_group" "ecs_logs" {
-  name              = "/ecs/${var.project_name}"
-  retention_in_days = 30
+# ECRからのイメージプル権限を追加
+resource "aws_iam_role_policy_attachment" "ecs_execution_ecr_policy" {
+  role       = aws_iam_role.ecs_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
 # ECS Task Role
@@ -589,64 +556,6 @@ resource "aws_iam_role_policy" "ecs_task_ssm_policy" {
       }
     ]
   })
-}
-
-# ECS Service
-resource "aws_ecs_service" "app" {
-  name            = "${var.project_name}-service"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
-
-  network_configuration {
-    subnets         = aws_subnet.private[*].id
-    security_groups = [aws_security_group.ecs_tasks.id]
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.app.arn
-    container_name   = "${var.project_name}-app"
-    container_port   = 80
-  }
-
-  # Execute Commandを有効にする
-  enable_execute_command = true
-
-  depends_on = [aws_lb_listener.https]
-}
-
-# ECR Repository
-resource "aws_ecr_repository" "app" {
-  name         = "${var.project_name}-app"
-  force_delete = true
-}
-
-# ECS Task Execution Role
-resource "aws_iam_role" "ecs_execution_role" {
-  name = "${var.project_name}-ecs-execution-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
-  role       = aws_iam_role.ecs_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# ECRからのイメージプル権限を追加
-resource "aws_iam_role_policy_attachment" "ecs_execution_ecr_policy" {
-  role       = aws_iam_role.ecs_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
 # Security Group for ECS Tasks
@@ -790,6 +699,12 @@ resource "aws_security_group" "vpc_endpoints" {
   }
 }
 
+# ECR Repository
+resource "aws_ecr_repository" "app" {
+  name         = "${var.project_name}-app"
+  force_delete = true
+}
+
 # Outputs
 output "alb_dns_name" {
   description = "The DNS name of the load balancer"
@@ -814,4 +729,54 @@ output "ecr_repository_url" {
 output "rds_endpoint" {
   description = "The endpoint of the RDS instance"
   value       = aws_db_instance.mysql.endpoint
+}
+
+output "ecs_cluster_name" {
+  description = "The name of the ECS cluster"
+  value       = aws_ecs_cluster.main.name
+}
+
+output "ecs_task_execution_role_arn" {
+  description = "The ARN of the ECS task execution role"
+  value       = aws_iam_role.ecs_execution_role.arn
+}
+
+output "ecs_task_role_arn" {
+  description = "The ARN of the ECS task role"
+  value       = aws_iam_role.ecs_task_role.arn
+}
+
+output "vpc_id" {
+  description = "The ID of the VPC"
+  value       = aws_vpc.main.id
+}
+
+output "public_subnet_ids" {
+  description = "The IDs of the public subnets"
+  value       = aws_subnet.public[*].id
+}
+
+output "private_subnet_ids" {
+  description = "The IDs of the private subnets"
+  value       = aws_subnet.private[*].id
+}
+
+output "alb_security_group_id" {
+  description = "The ID of the ALB security group"
+  value       = aws_security_group.alb.id
+}
+
+output "ecs_tasks_security_group_id" {
+  description = "The ID of the ECS tasks security group"
+  value       = aws_security_group.ecs_tasks.id
+}
+
+output "alb_target_group_arn" {
+  description = "The ARN of the ALB target group"
+  value       = aws_lb_target_group.app.arn
+}
+
+output "cloudwatch_log_group_name" {
+  description = "The name of the CloudWatch Logs group for ECS tasks"
+  value       = aws_cloudwatch_log_group.ecs_logs.name
 }
