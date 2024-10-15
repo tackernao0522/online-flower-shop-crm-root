@@ -373,7 +373,7 @@ jobs:
             NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
               family: .family,
               taskRoleArn: .taskRoleArn,
-              executionRoleArn: .executionRoleArn,
+              executionRoleArn: "'${ECS_EXECUTION_ROLE_ARN}'",
               networkMode: .networkMode,
               containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"],
               volumes: .volumes,
