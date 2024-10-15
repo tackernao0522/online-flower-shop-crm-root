@@ -347,6 +347,13 @@ jobs:
             echo "Docker build successful. Listing images:"
             docker images
 
+      - run:
+          name: Check Composer log
+          command: |
+            docker cp $(docker ps -aq):/tmp/composer_log.txt ./composer_log.txt
+            cat ./composer_log.txt
+
+
             echo "Pushing image to ECR..."
             docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
 
