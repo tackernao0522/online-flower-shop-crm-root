@@ -350,7 +350,19 @@ jobs:
       - run:
           name: Check Composer log
           command: |
-            docker cp $(docker ps -aq):/tmp/composer_log.txt ./composer_log.txt
+            # 実行中のコンテナを取得（最初の1つだけ）
+            CONTAINER_ID=$(docker ps -q | head -n 1)
+
+            # コンテナ ID が存在するかチェック
+            if [ -z "$CONTAINER_ID" ]; then
+              echo "No running container found."
+              exit 1
+            fi
+
+            # composer_log.txt をコピー
+            docker cp "$CONTAINER_ID:/tmp/composer_log.txt" ./composer_log.txt
+
+            # ログを表示
             cat ./composer_log.txt
 
             echo "Pushing image to ECR..."
