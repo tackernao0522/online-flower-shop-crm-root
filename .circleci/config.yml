@@ -359,6 +359,12 @@ jobs:
               exit 1
             fi
 
+            # コンテナ内のファイルが存在するかを確認
+            if ! docker exec "$CONTAINER_ID" test -f /tmp/composer_log.txt; then
+              echo "File /tmp/composer_log.txt not found in container $CONTAINER_ID"
+              exit 1
+            fi
+
             # composer_log.txt をコピー
             docker cp "$CONTAINER_ID:/tmp/composer_log.txt" ./composer_log.txt
 
