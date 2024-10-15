@@ -350,26 +350,18 @@ jobs:
       - run:
           name: Check Composer log
           command: |
-            # 実行中のコンテナを取得（最初の1つだけ）
             CONTAINER_ID=$(docker ps -q | head -n 1)
 
-            # コンテナ ID が存在するかチェック
             if [ -z "$CONTAINER_ID" ]; then
               echo "No running container found."
               exit 1
             fi
 
-            # コンテナ内のファイルが存在するかを確認
-            if ! docker exec "$CONTAINER_ID" test -f /tmp/composer_log.txt; then
-              echo "File /tmp/composer_log.txt not found in container $CONTAINER_ID"
+            # コンテナ内で composer_log.txt の内容を表示
+            docker exec "$CONTAINER_ID" cat /tmp/composer_log.txt || {
+              echo "Composer log file not found."
               exit 1
-            fi
-
-            # composer_log.txt をコピー
-            docker cp "$CONTAINER_ID:/tmp/composer_log.txt" ./composer_log.txt
-
-            # ログを表示
-            cat ./composer_log.txt
+            }
 
             echo "Pushing image to ECR..."
             docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
