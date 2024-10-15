@@ -350,17 +350,14 @@ jobs:
       - run:
           name: Check Composer log
           command: |
-            CONTAINER_ID=$(docker ps -aq)
-            if [ -z "$CONTAINER_ID" ]; then
-              echo "No running or stopped containers found."
+            CONTAINER_ID=$(docker create $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1})
+            docker cp $CONTAINER_ID:/tmp/composer_log.txt ./composer_log.txt || echo "Failed to copy composer_log.txt from container"
+            docker rm $CONTAINER_ID
+            if [ -f "./composer_log.txt" ]; then
+              echo "Composer log contents:"
+              cat ./composer_log.txt
             else
-              echo "Container ID: $CONTAINER_ID"
-              docker cp $CONTAINER_ID:/tmp/composer_log.txt ./composer_log.txt
-              if [ -f "./composer_log.txt" ]; then
-                cat ./composer_log.txt
-              else
-                echo "composer_log.txt not found in the container."
-              fi
+              echo "composer_log.txt not found"
             fi
 
       - run:
