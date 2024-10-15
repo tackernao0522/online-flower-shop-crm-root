@@ -360,26 +360,39 @@ jobs:
               echo "composer_log.txt not found"
             fi
 
-      - run:
-          name: Push image to ECR
-          command: |
-            echo "Pushing image to ECR..."
-            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
-
-            if [ $? -ne 0 ]; then
-              echo "Failed to push image to ECR"
-              exit 1
-            fi
-
-            echo "Image successfully pushed to ECR"
-
-            echo "Describing image in ECR..."
-            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
-
       - save_cache:
           paths:
             - /home/circleci/.docker
           key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
+
+      - run:
+          name: Update ECS task definition
+          command: |
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition)
+
+            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
+              family: .family,
+              taskRoleArn: .taskRoleArn,
+              executionRoleArn: .executionRoleArn,
+              networkMode: .networkMode,
+              containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"],
+              volumes: .volumes,
+              placementConstraints: .placementConstraints,
+              requiresCompatibilities: .requiresCompatibilities,
+              cpu: .cpu,
+              memory: .memory
+            }')
+
+            NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
+
+            NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+            echo "New task definition revision: $NEW_REVISION"
+
+      - run:
+          name: Set job status
+          command: |
+            echo 'export CCI_STATUS="${CIRCLE_JOB}"' >> $BASH_ENV
+            source $BASH_ENV
 
       - slack/notify:
           event: fail
