@@ -372,75 +372,94 @@ jobs:
           key: docker-{{ .Branch }}-{{ checksum "./api/infra/php/Dockerfile.prod" }}
 
       - run:
-          name: Create or Update ECS task definition
+          name: Create or Update ECS Task Definition
           command: |
-            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition || echo "")
+            # 既存のタスク定義を取得
+            TASK_DEFINITION=$(aws ecs describe-task-definition \
+              --task-definition ofcrm-app --query taskDefinition || echo "")
 
             if [ -z "$TASK_DEFINITION" ]; then
               echo "Task definition does not exist. Creating new task definition."
-              NEW_TASK_DEFINITION=$(cat <<EOF
-            {
-              "family": "ofcrm-app",
-              "networkMode": "awsvpc",
-              "requiresCompatibilities": ["FARGATE"],
-              "cpu": "256",
-              "memory": "512",
-              "executionRoleArn": "${ECS_EXECUTION_ROLE_ARN}",
-              "taskRoleArn": "${ECS_TASK_ROLE_ARN}",
-              "containerDefinitions": [
-                {
-                  "name": "ofcrm-app",
-                  "image": "${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}",
-                  "portMappings": [
+
+              # 新しいタスク定義を JSON オブジェクトとして構築
+              NEW_TASK_DEFINITION=$(jq -n \
+                --arg family "ofcrm-app" \
+                --arg networkMode "awsvpc" \
+                --arg cpu "256" \
+                --arg memory "512" \
+                --arg executionRoleArn "${ECS_EXECUTION_ROLE_ARN}" \
+                --arg taskRoleArn "${ECS_TASK_ROLE_ARN}" \
+                --arg image "${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}" \
+                --arg region "${AWS_DEFAULT_REGION}" \
+                '{
+                  family: $family,
+                  networkMode: $networkMode,
+                  requiresCompatibilities: ["FARGATE"],
+                  cpu: $cpu,
+                  memory: $memory,
+                  executionRoleArn: $executionRoleArn,
+                  taskRoleArn: $taskRoleArn,
+                  containerDefinitions: [
                     {
-                      "containerPort": 80,
-                      "hostPort": 80,
-                      "protocol": "tcp"
+                      name: "ofcrm-app",
+                      image: $image,
+                      portMappings: [
+                        {
+                          containerPort: 80,
+                          hostPort: 80,
+                          protocol: "tcp"
+                        }
+                      ],
+                      environment: [
+                        {name: "APP_ENV", value: "production"},
+                        {name: "APP_URL", value: "https://api.tkb-tech.com"},
+                        {name: "DB_HOST", value: $DB_HOST},
+                        {name: "DB_DATABASE", value: "flowercrm_production"},
+                        {name: "FRONTEND_URL", value: "https://front.tkb-tech.com"},
+                        {name: "BROADCAST_DRIVER", value: "pusher"},
+                        {name: "PUSHER_HOST", value: "api.tkb-tech.com"},
+                        {name: "PUSHER_PORT", value: "443"},
+                        {name: "PUSHER_SCHEME", value: "https"},
+                        {name: "LARAVEL_WEBSOCKETS_ENABLED", value: "true"},
+                        {name: "AWS_DEFAULT_REGION", value: $region},
+                        {name: "AWS_SECRETS_MANAGER_SECRET_NAME", value: $AWS_SECRETS_MANAGER_SECRET_NAME}
+                      ],
+                      secrets: [
+                        {name: "APP_KEY", valueFrom: "${APP_SECRETS_ARN}:APP_KEY::"},
+                        {name: "DB_USERNAME", valueFrom: "${APP_SECRETS_ARN}:DB_USERNAME::"},
+                        {name: "DB_PASSWORD", valueFrom: "${APP_SECRETS_ARN}:DB_PASSWORD::"},
+                        {name: "PUSHER_APP_ID", valueFrom: "${APP_SECRETS_ARN}:PUSHER_APP_ID::"},
+                        {name: "PUSHER_APP_KEY", valueFrom: "${APP_SECRETS_ARN}:PUSHER_APP_KEY::"},
+                        {name: "PUSHER_APP_SECRET", valueFrom: "${APP_SECRETS_ARN}:PUSHER_APP_SECRET::"},
+                        {name: "PUSHER_APP_CLUSTER", valueFrom: "${APP_SECRETS_ARN}:PUSHER_APP_CLUSTER::"},
+                        {name: "JWT_SECRET", valueFrom: "${APP_SECRETS_ARN}:JWT_SECRET::"}
+                      ],
+                      logConfiguration: {
+                        logDriver: "awslogs",
+                        options: {
+                          "awslogs-group": "/ecs/ofcrm",
+                          "awslogs-region": $region,
+                          "awslogs-stream-prefix": "ecs"
+                        }
+                      }
                     }
-                  ],
-                  "environment": [
-                    {"name": "APP_ENV", "value": "production"},
-                    {"name": "APP_URL", "value": "https://api.tkb-tech.com"},
-                    {"name": "DB_HOST", "value": "${DB_HOST}"},
-                    {"name": "DB_DATABASE", "value": "flowercrm_production"},
-                    {"name": "FRONTEND_URL", "value": "https://front.tkb-tech.com"},
-                    {"name": "BROADCAST_DRIVER", "value": "pusher"},
-                    {"name": "PUSHER_HOST", "value": "api.tkb-tech.com"},
-                    {"name": "PUSHER_PORT", "value": "443"},
-                    {"name": "PUSHER_SCHEME", "value": "https"},
-                    {"name": "LARAVEL_WEBSOCKETS_ENABLED", "value": "true"},
-                    {"name": "AWS_DEFAULT_REGION", "value": "${AWS_DEFAULT_REGION}"},
-                    {"name": "AWS_SECRETS_MANAGER_SECRET_NAME", "value": "${AWS_SECRETS_MANAGER_SECRET_NAME}"}
-                  ],
-                  "secrets": [
-                    {"name": "APP_KEY", "valueFrom": "${APP_SECRETS_ARN}:APP_KEY::"},
-                    {"name": "DB_USERNAME", "valueFrom": "${APP_SECRETS_ARN}:DB_USERNAME::"},
-                    {"name": "DB_PASSWORD", "valueFrom": "${APP_SECRETS_ARN}:DB_PASSWORD::"},
-                    {"name": "PUSHER_APP_ID", "valueFrom": "${APP_SECRETS_ARN}:PUSHER_APP_ID::"},
-                    {"name": "PUSHER_APP_KEY", "valueFrom": "${APP_SECRETS_ARN}:PUSHER_APP_KEY::"},
-                    {"name": "PUSHER_APP_SECRET", "valueFrom": "${APP_SECRETS_ARN}:PUSHER_APP_SECRET::"},
-                    {"name": "PUSHER_APP_CLUSTER", "valueFrom": "${APP_SECRETS_ARN}:PUSHER_APP_CLUSTER::"},
-                    {"name": "JWT_SECRET", "valueFrom": "${APP_SECRETS_ARN}:JWT_SECRET::"}
-                  ],
-                  "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {
-                      "awslogs-group": "/ecs/ofcrm",
-                      "awslogs-region": "${AWS_DEFAULT_REGION}",
-                      "awslogs-stream-prefix": "ecs"
-                    }
-                  }
-                }
-              ]
-            }
-            EOF
-            )
+                  ]
+                }'
+              )
             else
               echo "Updating existing task definition."
-              NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}" '.containerDefinitions[0].image = $IMAGE')
+
+              # 既存のタスク定義を更新
+              NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq \
+                --arg IMAGE "${ECR_ENDPOINT}/ofcrm-app:${CIRCLE_SHA1}" \
+                '.containerDefinitions[0].image = $IMAGE')
             fi
 
-            NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
+            # 新しいタスク定義を ECS に登録
+            NEW_TASK_INFO=$(aws ecs register-task-definition \
+              --cli-input-json "$NEW_TASK_DEFINITION")
+
+            # 新しいタスク定義のリビジョンを取得
             NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
             echo "New task definition revision: $NEW_REVISION"
 
