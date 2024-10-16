@@ -445,11 +445,6 @@ jobs:
             git submodule sync
             git submodule update --init --recursive
       - setup_remote_docker
-      # - run:
-      #     name: Install Babel plugin
-      #     command: |
-      #       cd front
-      #       npm install --save-dev @babel/plugin-proposal-private-methods
       - run:
           name: Debug environment variables
           command: |
@@ -481,12 +476,16 @@ jobs:
 
             # ビルド結果の取得
             docker create --name front-container front-app
-            docker cp front-container:/app/out ./out
+            docker cp front-container:/app/.next ./dist
+
+            # ビルド結果の確認（デバッグ用）
+            echo "Contents of ./dist directory:"
+            ls -la ./dist
       - aws-cli/setup
       - run:
           name: Deploy to S3
           command: |
-            aws s3 sync ./front/out s3://${AWS_S3_BUCKET_NAME} --delete
+            aws s3 sync ./dist s3://${AWS_S3_BUCKET_NAME} --delete
       - run:
           name: Invalidate CloudFront cache
           command: |
