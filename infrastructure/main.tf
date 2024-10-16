@@ -426,14 +426,26 @@ resource "aws_cloudfront_distribution" "front" {
     max_ttl                = 86400
   }
 
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
   restrictions {
     geo_restriction {
       restriction_type = "none"
     }
   }
 
-  viewer_certificate {
-    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn  # us-east-1証明書
+viewer_certificate {
+    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn
     ssl_support_method  = "sni-only"
   }
 
@@ -798,4 +810,14 @@ output "ecr_repository_url" {
 output "rds_endpoint" {
   description = "The endpoint of the RDS instance"
   value       = aws_db_instance.mysql.endpoint
+}
+
+output "frontend_s3_bucket_name" {
+  description = "The name of the S3 bucket for the frontend"
+  value       = aws_s3_bucket.front.id
+}
+
+output "cloudfront_distribution_id" {
+  description = "The ID of the CloudFront distribution"
+  value       = aws_cloudfront_distribution.front.id
 }

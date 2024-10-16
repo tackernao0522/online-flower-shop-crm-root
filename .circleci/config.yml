@@ -6,6 +6,7 @@ orbs:
   aws-ecr: circleci/aws-ecr@6.15.3
   aws-ecs: circleci/aws-ecs@2.1.0
   aws-cli: circleci/aws-cli@2.0.3
+  aws-s3: circleci/aws-s3@3.0
 
 jobs:
   build-and-test:
@@ -433,6 +434,28 @@ jobs:
           channel: ${SLACK_CHANNEL_ID_DEPLOY}
           template: basic_success_1
 
+  build-and-deploy-front:
+    docker:
+      - image: cimg/node:18.0
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: build Next.js app
+          command: |
+            cd front
+            docker build -t fornt-app -f Dockerfile.prod .
+            docker create --name front-container front-app
+            docker cp front-container:/app/out ./out
+      - aws-cli/setup
+      - run:
+          name: Deploy to S3
+          command: |
+            aws s3 sync ./out s3://${AWS_S3_BUCKET_NAME} --delete
+     -  run:
+          name: Invalidate CloudFront cache
+          command: |
+            aws cloudfront create-invalidation --distribution-id ${AWS_CLOUDFRONT_ID} --paths "/*"
 workflows:
   version: 2
   build-test-deploy:
@@ -450,6 +473,10 @@ workflows:
           context: my-production-context
           requires:
             - build-and-push-image
+      - build-and-deploy-front:
+          context: my-production-context
+          requires:
+            - build-and--test
           filters:
             branches:
               only: main
