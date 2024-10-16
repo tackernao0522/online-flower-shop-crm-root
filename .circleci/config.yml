@@ -439,12 +439,19 @@ jobs:
       - image: cimg/node:18.0
     steps:
       - checkout
+      - run:
+          name: Checkout submodules
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
       - setup_remote_docker
       - run:
-          name: build Next.js app
+          name: Build Next.js app
           command: |
+            ls -la  # ディレクトリの内容を確認
             cd front
-            docker build -t fornt-app -f Dockerfile.prod .
+            ls -la  # frontディレクトリの内容を確認
+            docker build -t front-app -f Dockerfile.prod .
             docker create --name front-container front-app
             docker cp front-container:/app/out ./out
       - aws-cli/setup
