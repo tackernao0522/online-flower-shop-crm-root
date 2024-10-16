@@ -454,7 +454,13 @@ jobs:
 
             # .env.production ファイルの作成（必要な環境変数を設定）
             echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" > .env.production
-            echo "その他の環境変数=値" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_APP_KEY=${NEXT_PUBLIC_PUSHER_APP_KEY}" > .env.production
+            echo "NEXT_PUBLIC_PUSHER_HOST=${NEXT_PUBLIC_PUSHER_HOST}" > .env.production
+            echo "NEXT_PUBLIC_PUSHER_PORT=${NEXT_PUBLIC_PUSHER_PORT}" > .env.production
+            echo "NEXT_PUBLIC_PUSHER_SCHEME=${NEXT_PUBLIC_PUSHER_SCHEME}" > .env.production
+            echo "NEXT_PUBLIC_WEBSOCKET_HOST=${NEXT_PUBLIC_WEBSOCKET_HOST}" > .env.production
+            echo "NEXT_PUBLIC_WEBSOCKET_PORT=${NEXT_PUBLIC_WEBSOCKET_PORT}" > .env.production
+            echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${NEXT_PUBLIC_PUSHER_APP_CLUSTER}" > .env.production
 
             # Dockerイメージのビルド
             docker build --build-arg NODE_ENV=production -t front-app -f Dockerfile.prod .
