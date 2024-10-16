@@ -458,16 +458,14 @@ jobs:
             ls -la  # frontディレクトリの内容を確認
 
             # .env.production ファイルの作成（必要な環境変数を設定）
-            cat << EOF > .env.production
-            NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-            NEXT_PUBLIC_PUSHER_APP_KEY=${NEXT_PUBLIC_PUSHER_APP_KEY}
-            NEXT_PUBLIC_PUSHER_HOST=${NEXT_PUBLIC_PUSHER_HOST}
-            NEXT_PUBLIC_PUSHER_PORT=${NEXT_PUBLIC_PUSHER_PORT}
-            NEXT_PUBLIC_PUSHER_SCHEME=${NEXT_PUBLIC_PUSHER_SCHEME}
-            NEXT_PUBLIC_WEBSOCKET_HOST=${NEXT_PUBLIC_WEBSOCKET_HOST}
-            NEXT_PUBLIC_WEBSOCKET_PORT=${NEXT_PUBLIC_WEBSOCKET_PORT}
-            NEXT_PUBLIC_PUSHER_APP_CLUSTER=${NEXT_PUBLIC_PUSHER_APP_CLUSTER}
-            EOF
+            echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_APP_KEY=${NEXT_PUBLIC_PUSHER_APP_KEY}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_HOST=${NEXT_PUBLIC_PUSHER_HOST}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_PORT=${NEXT_PUBLIC_PUSHER_PORT}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_SCHEME=${NEXT_PUBLIC_PUSHER_SCHEME}" >> .env.production
+            echo "NEXT_PUBLIC_WEBSOCKET_HOST=${NEXT_PUBLIC_WEBSOCKET_HOST}" >> .env.production
+            echo "NEXT_PUBLIC_WEBSOCKET_PORT=${NEXT_PUBLIC_WEBSOCKET_PORT}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${NEXT_PUBLIC_PUSHER_APP_CLUSTER}" >> .env.production
 
             # .env.production の内容を表示（デバッグ用）
             echo "Contents of .env.production:"
