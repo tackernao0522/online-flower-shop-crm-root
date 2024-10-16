@@ -481,6 +481,9 @@ jobs:
             # ビルド結果の確認（デバッグ用）
             echo "Contents of ./dist directory:"
             ls -la ./dist
+
+            # プロジェクトルートにdistディレクトリをコピー
+            cp -r ./dist ../dist
       - aws-cli/setup
       - run:
           name: Deploy to S3
