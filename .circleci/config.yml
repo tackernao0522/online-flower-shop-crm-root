@@ -451,14 +451,22 @@ jobs:
             ls -la  # ディレクトリの内容を確認
             cd front
             ls -la  # frontディレクトリの内容を確認
-            docker build -t front-app -f Dockerfile.prod .
+
+            # .env.production ファイルの作成（必要な環境変数を設定）
+            echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" > .env.production
+            echo "その他の環境変数=値" >> .env.production
+
+            # Dockerイメージのビルド
+            docker build --build-arg NODE_ENV=production -t front-app -f Dockerfile.prod .
+
+            # ビルド結果の取得
             docker create --name front-container front-app
             docker cp front-container:/app/out ./out
       - aws-cli/setup
       - run:
           name: Deploy to S3
           command: |
-            aws s3 sync ./out s3://${AWS_S3_BUCKET_NAME} --delete
+            aws s3 sync ./front/out s3://${AWS_S3_BUCKET_NAME} --delete
       - run:
           name: Invalidate CloudFront cache
           command: |
