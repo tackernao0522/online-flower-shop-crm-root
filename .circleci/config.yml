@@ -446,6 +446,11 @@ jobs:
             git submodule update --init --recursive
       - setup_remote_docker
       - run:
+          name: Install Babel plugin # 新しく追加したステップ
+          command: |
+            cd front
+            npm install --save-dev @babel/plugin-proposal-private-methods
+      - run:
           name: Debug environment variables
           command: |
             echo "NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}"
