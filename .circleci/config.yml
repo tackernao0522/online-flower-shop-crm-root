@@ -476,7 +476,7 @@ jobs:
 
             # ビルド結果の取得
             docker create --name front-container front-app
-            docker cp front-container:/app/out ./dist
+            docker cp front-container:/app/out ./dist || docker cp front-container:/app/.next ./dist
 
             # ビルド結果の確認（デバッグ用）
             echo "Contents of ./dist directory:"
