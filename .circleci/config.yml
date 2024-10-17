@@ -453,9 +453,9 @@ jobs:
       - run:
           name: Build Next.js app
           command: |
-            ls -la  # ディレクトリの内容を確認
+            ls -la
             cd front
-            ls -la  # frontディレクトリの内容を確認
+            ls -la
 
             # .env.production ファイルの作成（必要な環境変数を設定）
             echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" > .env.production
@@ -467,23 +467,16 @@ jobs:
             echo "NEXT_PUBLIC_WEBSOCKET_PORT=${NEXT_PUBLIC_WEBSOCKET_PORT}" >> .env.production
             echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${NEXT_PUBLIC_PUSHER_APP_CLUSTER}" >> .env.production
 
-            # .env.production の内容を表示（デバッグ用）
             echo "Contents of .env.production:"
             cat .env.production
 
-            # Dockerイメージのビルド
             docker build --build-arg NODE_ENV=production -t front-app -f Dockerfile.prod .
-
-            # ビルド結果の取得
             docker create --name front-container front-app
-            # Dockerfile.prodのビルド結果コピー部分を修正
-            docker cp front-container:/app/out ./dist || docker cp front-container:/app/.next ./dist || echo "No build output found"
+            docker cp front-container:/usr/share/nginx/html ./dist
 
-            # ビルド結果の確認（デバッグ用）
             echo "Contents of ./dist directory:"
             ls -la ./dist
 
-            # プロジェクトルートにdistディレクトリをコピー
             cp -r ./dist ../dist
       - aws-cli/setup
       - run:
