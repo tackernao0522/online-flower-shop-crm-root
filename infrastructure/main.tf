@@ -322,6 +322,19 @@ resource "aws_s3_bucket" "front" {
   }
 }
 
+# S3バケットの静的ウェブサイトホスティング設定
+resource "aws_s3_bucket_website_configuration" "front" {
+  bucket = aws_s3_bucket.front.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
+}
+
 # S3バケットのパブリックアクセスブロック
 resource "aws_s3_bucket_public_access_block" "front" {
   bucket = aws_s3_bucket.front.id
@@ -444,7 +457,7 @@ resource "aws_cloudfront_distribution" "front" {
     }
   }
 
-viewer_certificate {
+  viewer_certificate {
     acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn
     ssl_support_method  = "sni-only"
   }
@@ -820,4 +833,9 @@ output "frontend_s3_bucket_name" {
 output "cloudfront_distribution_id" {
   description = "The ID of the CloudFront distribution"
   value       = aws_cloudfront_distribution.front.id
+}
+
+output "s3_website_endpoint" {
+  description = "The S3 static website hosting endpoint"
+  value       = aws_s3_bucket_website_configuration.front.website_endpoint
 }
