@@ -6,7 +6,6 @@ orbs:
   aws-ecr: circleci/aws-ecr@6.15.3
   aws-ecs: circleci/aws-ecs@2.1.0
   aws-cli: circleci/aws-cli@2.0.3
-  aws-s3: circleci/aws-s3@3.0
 
 jobs:
   build-and-test:
@@ -434,46 +433,6 @@ jobs:
           channel: ${SLACK_CHANNEL_ID_DEPLOY}
           template: basic_success_1
 
-  build-and-deploy-front:
-    docker:
-      - image: cimg/node:18.0
-    steps:
-      - checkout
-      - run:
-          name: Checkout submodules
-          command: |
-            git submodule sync
-            git submodule update --init --recursive
-      - setup_remote_docker
-      - run:
-          name: Build Next.js app
-          command: |
-            cd front
-            echo "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" > .env.production
-            echo "NEXT_PUBLIC_PUSHER_APP_KEY=${NEXT_PUBLIC_PUSHER_APP_KEY}" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_HOST=${NEXT_PUBLIC_PUSHER_HOST}" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_PORT=${NEXT_PUBLIC_PUSHER_PORT}" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_SCHEME=${NEXT_PUBLIC_PUSHER_SCHEME}" >> .env.production
-            echo "NEXT_PUBLIC_WEBSOCKET_HOST=${NEXT_PUBLIC_WEBSOCKET_HOST}" >> .env.production
-            echo "NEXT_PUBLIC_WEBSOCKET_PORT=${NEXT_PUBLIC_WEBSOCKET_PORT}" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${NEXT_PUBLIC_PUSHER_APP_CLUSTER}" >> .env.production
-
-            docker build --build-arg NODE_ENV=production -t front-app -f Dockerfile.prod .
-            docker create --name front-container front-app
-            docker cp front-container:/usr/share/nginx/html ./dist
-
-            echo "Contents of ./dist directory:"
-            ls -la ./dist
-      - aws-cli/setup
-      - run:
-          name: Deploy to S3
-          command: |
-            aws s3 sync ./front/dist s3://${AWS_S3_BUCKET_NAME} --delete
-      - run:
-          name: Invalidate CloudFront cache
-          command: |
-            aws cloudfront create-invalidation --distribution-id ${AWS_CLOUDFRONT_ID} --paths "/*"
-
 workflows:
   version: 2
   build-test-deploy:
@@ -491,10 +450,6 @@ workflows:
           context: my-production-context
           requires:
             - build-and-push-image
-      - build-and-deploy-front:
-          context: my-production-context
-          requires:
-            - build-and-test
           filters:
             branches:
               only: main

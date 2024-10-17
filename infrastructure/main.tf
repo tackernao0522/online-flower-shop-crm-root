@@ -322,19 +322,6 @@ resource "aws_s3_bucket" "front" {
   }
 }
 
-# S3バケットの静的ウェブサイトホスティング設定
-resource "aws_s3_bucket_website_configuration" "front" {
-  bucket = aws_s3_bucket.front.id
-
-  index_document {
-    suffix = "index.html"
-  }
-
-  error_document {
-    key = "index.html"
-  }
-}
-
 # S3バケットのパブリックアクセスブロック
 resource "aws_s3_bucket_public_access_block" "front" {
   bucket = aws_s3_bucket.front.id
@@ -439,18 +426,6 @@ resource "aws_cloudfront_distribution" "front" {
     max_ttl                = 86400
   }
 
-  custom_error_response {
-    error_code         = 403
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-
-  custom_error_response {
-    error_code         = 404
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-
   restrictions {
     geo_restriction {
       restriction_type = "none"
@@ -458,7 +433,7 @@ resource "aws_cloudfront_distribution" "front" {
   }
 
   viewer_certificate {
-    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn
+    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn  # us-east-1証明書
     ssl_support_method  = "sni-only"
   }
 
@@ -823,19 +798,4 @@ output "ecr_repository_url" {
 output "rds_endpoint" {
   description = "The endpoint of the RDS instance"
   value       = aws_db_instance.mysql.endpoint
-}
-
-output "frontend_s3_bucket_name" {
-  description = "The name of the S3 bucket for the frontend"
-  value       = aws_s3_bucket.front.id
-}
-
-output "cloudfront_distribution_id" {
-  description = "The ID of the CloudFront distribution"
-  value       = aws_cloudfront_distribution.front.id
-}
-
-output "s3_website_endpoint" {
-  description = "The S3 static website hosting endpoint"
-  value       = aws_s3_bucket_website_configuration.front.website_endpoint
 }
