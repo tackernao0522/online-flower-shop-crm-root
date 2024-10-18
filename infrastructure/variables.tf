@@ -14,8 +14,20 @@ variable "vpc_cidr" {
 }
 
 variable "domain_name" {
-  description = "The domain name for the application"
+  description = "The main domain name for the application"
   type        = string
+}
+
+variable "frontend_subdomain" {
+  description = "The subdomain for the frontend application"
+  type        = string
+  default     = "front"
+}
+
+variable "backend_subdomain" {
+  description = "The subdomain for the backend API"
+  type        = string
+  default     = "api"
 }
 
 variable "db_username" {
