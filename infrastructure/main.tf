@@ -1,11 +1,6 @@
 # AWSプロバイダーの設定
 provider "aws" {
-  region = var.aws_region  # ap-northeast-1
-}
-
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
+  region = var.aws_region
 }
 
 # VPC設定
@@ -91,17 +86,6 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[count.index].id
 }
 
-# S3 ゲートウェイエンドポイント
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.${var.aws_region}.s3"
-  route_table_ids = aws_route_table.private[*].id
-
-  tags = {
-    Name = "${var.project_name}-s3-endpoint"
-  }
-}
-
 # 利用可能なAZのデータソース
 data "aws_availability_zones" "available" {
   state = "available"
@@ -183,14 +167,6 @@ resource "aws_security_group" "db" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Allow MySQL traffic from ALB"
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  ingress {
     description     = "Allow MySQL traffic from ECS tasks"
     from_port       = 3306
     to_port         = 3306
@@ -250,25 +226,14 @@ resource "aws_route53_zone" "main" {
   }
 }
 
-# ALBに向けたAレコード (API)
-resource "aws_route53_record" "api" {
-  zone_id = aws_route53_zone.main.zone_id
-  name    = "api.${var.domain_name}"
-  type    = "A"
-  alias {
-    name                   = aws_lb.main.dns_name
-    zone_id                = aws_lb.main.zone_id
-    evaluate_target_health = false
-  }
-}
-
-# ACM 証明書のリクエスト (API, 東京リージョン)
-resource "aws_acm_certificate" "api_cert_tokyo" {
-  domain_name       = "api.${var.domain_name}"
-  validation_method = "DNS"
+# ACM 証明書のリクエスト
+resource "aws_acm_certificate" "main" {
+  domain_name               = var.domain_name
+  validation_method         = "DNS"
+  subject_alternative_names = ["*.${var.domain_name}"]
 
   tags = {
-    Name = "${var.project_name}-api-cert"
+    Name = "${var.project_name}-cert"
   }
 
   lifecycle {
@@ -276,27 +241,28 @@ resource "aws_acm_certificate" "api_cert_tokyo" {
   }
 }
 
-# Route 53でのDNS検証を設定 (API, 東京リージョン)
-resource "aws_route53_record" "api_cert_validation" {
+# Route 53でのDNS検証を設定
+resource "aws_route53_record" "cert_validation" {
   for_each = {
-    for dvo in aws_acm_certificate.api_cert_tokyo.domain_validation_options : dvo.domain_name => {
+    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
     }
   }
 
-  zone_id = aws_route53_zone.main.zone_id
-  name    = each.value.name
-  type    = each.value.type
-  ttl     = 60
-  records = [each.value.record]
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = aws_route53_zone.main.zone_id
 }
 
-# ACM証明書の検証完了待ち (API, 東京リージョン)
-resource "aws_acm_certificate_validation" "api_cert_validation_tokyo" {
-  certificate_arn         = aws_acm_certificate.api_cert_tokyo.arn
-  validation_record_fqdns = [for record in aws_route53_record.api_cert_validation : record.fqdn]
+# ACM証明書の検証完了待ち
+resource "aws_acm_certificate_validation" "cert_validation" {
+  certificate_arn         = aws_acm_certificate.main.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
 
 # ALB リスナー (HTTPS)
@@ -305,150 +271,15 @@ resource "aws_lb_listener" "https" {
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = aws_acm_certificate_validation.api_cert_validation_tokyo.certificate_arn  # 東京リージョンの証明書
+  certificate_arn   = aws_acm_certificate_validation.cert_validation.certificate_arn
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
-  }
-}
-
-# フロントエンド用S3バケット
-resource "aws_s3_bucket" "front" {
-  bucket = "${var.project_name}-front"
-
-  tags = {
-    Name = "${var.project_name}-front-bucket"
-  }
-}
-
-# S3バケットのパブリックアクセスブロック
-resource "aws_s3_bucket_public_access_block" "front" {
-  bucket = aws_s3_bucket.front.id
-
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
-}
-
-# CloudFront OAI
-resource "aws_cloudfront_origin_access_identity" "front" {
-  comment = "OAI for ${var.project_name} frontend"
-}
-
-# S3バケットポリシー
-resource "aws_s3_bucket_policy" "front" {
-  bucket = aws_s3_bucket.front.id
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect    = "Allow",
-        Principal = { AWS = aws_cloudfront_origin_access_identity.front.iam_arn },
-        Action    = "s3:GetObject",
-        Resource  = "${aws_s3_bucket.front.arn}/*"
-      }
-    ]
-  })
-}
-
-# ACM 証明書 for front
-resource "aws_acm_certificate" "front_cert" {
-  provider          = aws.us_east_1  # us-east-1で証明書発行（CloudFrontの要件により）
-  domain_name       = "front.${var.domain_name}"
-  validation_method = "DNS"
-
-  tags = {
-    Name = "${var.project_name}-front-cert"
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-# DNS検証 for front
-resource "aws_route53_record" "front_cert_validation" {
-  provider = aws.us_east_1  # us-east-1プロバイダーでDNS検証
-
-  for_each = {
-    for dvo in aws_acm_certificate.front_cert.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not Found"
+      status_code  = "404"
     }
-  }
-
-  zone_id = aws_route53_zone.main.zone_id
-  name    = each.value.name
-  type    = each.value.type
-  ttl     = 60
-  records = [each.value.record]
-}
-
-# ACM証明書の検証完了待ち (Front)
-resource "aws_acm_certificate_validation" "front_cert_validation" {
-  provider                = aws.us_east_1
-  certificate_arn         = aws_acm_certificate.front_cert.arn
-  validation_record_fqdns = [for record in aws_route53_record.front_cert_validation : record.fqdn]
-}
-
-# CloudFront distribution for front
-resource "aws_cloudfront_distribution" "front" {
-  enabled             = true
-  default_root_object = "index.html"
-
-  origin {
-    domain_name = aws_s3_bucket.front.bucket_regional_domain_name
-    origin_id   = "S3-${aws_s3_bucket.front.id}"
-
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.front.cloudfront_access_identity_path
-    }
-  }
-
-  default_cache_behavior {
-    allowed_methods  = ["GET", "HEAD", "OPTIONS"]
-    cached_methods   = ["GET", "HEAD"]
-    target_origin_id = "S3-${aws_s3_bucket.front.id}"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 3600
-    max_ttl                = 86400
-  }
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  viewer_certificate {
-    acm_certificate_arn = aws_acm_certificate_validation.front_cert_validation.certificate_arn  # us-east-1証明書
-    ssl_support_method  = "sni-only"
-  }
-
-  aliases = ["front.${var.domain_name}"]
-}
-
-# Route 53 Aレコード for front
-resource "aws_route53_record" "front" {
-  zone_id = aws_route53_zone.main.zone_id
-  name    = "front.${var.domain_name}"
-  type    = "A"
-  alias {
-    name                   = aws_cloudfront_distribution.front.domain_name
-    zone_id                = aws_cloudfront_distribution.front.hosted_zone_id
-    evaluate_target_health = false
   }
 }
 
@@ -457,9 +288,9 @@ resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
 }
 
-# ECS Task Definition
-resource "aws_ecs_task_definition" "app" {
-  family                   = "${var.project_name}-app"
+# Backend ECS Task Definition
+resource "aws_ecs_task_definition" "backend" {
+  family                   = "${var.project_name}-backend"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
@@ -468,8 +299,8 @@ resource "aws_ecs_task_definition" "app" {
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([{
-    name  = "${var.project_name}-app"
-    image = "${aws_ecr_repository.app.repository_url}:latest"
+    name  = "${var.project_name}-backend"
+    image = "${aws_ecr_repository.backend.repository_url}:latest"
     portMappings = [{
       containerPort = 80
       hostPort      = 80
@@ -496,76 +327,25 @@ resource "aws_ecs_task_definition" "app" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        awslogs-group         = "/ecs/${var.project_name}"
+        awslogs-group         = "/ecs/${var.project_name}-backend"
         awslogs-region        = var.aws_region
         awslogs-stream-prefix = "ecs"
       }
     }
-    # Execute Commandを有効にする
-    enableExecuteCommand = true
   }])
 }
 
-# CloudWatch Logs group for ECS
-resource "aws_cloudwatch_log_group" "ecs_logs" {
-  name              = "/ecs/${var.project_name}"
+# Backend CloudWatch Logs group
+resource "aws_cloudwatch_log_group" "backend_logs" {
+  name              = "/ecs/${var.project_name}-backend"
   retention_in_days = 30
 }
 
-# ECS Task Role
-resource "aws_iam_role" "ecs_task_role" {
-  name = "${var.project_name}-ecs-task-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# S3へのアクセスを許可するポリシー
-resource "aws_iam_role_policy_attachment" "ecs_task_s3_read_policy" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
-}
-
-# Execute Command用のIAMポリシー
-resource "aws_iam_role_policy" "ecs_task_ssm_policy" {
-  name = "${var.project_name}-ecs-task-ssm-policy"
-  role = aws_iam_role.ecs_task_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "ssmmessages:CreateControlChannel",
-          "ssmmessages:CreateDataChannel",
-          "ssmmessages:OpenControlChannel",
-          "ssmmessages:OpenDataChannel"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-# ECS Service
-resource "aws_ecs_service" "app" {
-  name            = "${var.project_name}-service"
+# Backend ECS Service
+resource "aws_ecs_service" "backend" {
+  name            = "${var.project_name}-backend-service"
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
+  task_definition = aws_ecs_task_definition.backend.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 
@@ -575,20 +355,23 @@ resource "aws_ecs_service" "app" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.app.arn
-    container_name   = "${var.project_name}-app"
+    target_group_arn = aws_lb_target_group.backend.arn
+    container_name   = "${var.project_name}-backend"
     container_port   = 80
   }
-
-  # Execute Commandを有効にする
-  enable_execute_command = true
 
   depends_on = [aws_lb_listener.https]
 }
 
-# ECR Repository
-resource "aws_ecr_repository" "app" {
-  name         = "${var.project_name}-app"
+# Backend ECR Repository
+resource "aws_ecr_repository" "backend" {
+  name         = "${var.project_name}-backend"
+  force_delete = true
+}
+
+# Frontend ECR Repository
+resource "aws_ecr_repository" "frontend" {
+  name         = "${var.project_name}-frontend"
   force_delete = true
 }
 
@@ -613,10 +396,30 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# ECRからのイメージプル権限を追加
 resource "aws_iam_role_policy_attachment" "ecs_execution_ecr_policy" {
   role       = aws_iam_role.ecs_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# ECS Task Role
+resource "aws_iam_role" "ecs_task_role" {
+  name = "${var.project_name}-ecs-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 # Security Group for ECS Tasks
@@ -634,8 +437,8 @@ resource "aws_security_group" "ecs_tasks" {
 
   ingress {
     protocol        = "tcp"
-    from_port       = 443
-    to_port         = 443
+    from_port       = 3000
+    to_port         = 3000
     security_groups = [aws_security_group.alb.id]
   }
 
@@ -647,9 +450,9 @@ resource "aws_security_group" "ecs_tasks" {
   }
 }
 
-# ALB Target Group
-resource "aws_lb_target_group" "app" {
-  name        = "${var.project_name}-tg"
+# Backend ALB Target Group
+resource "aws_lb_target_group" "backend" {
+  name        = "${var.project_name}-backend-tg"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
@@ -666,111 +469,146 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
-# VPCエンドポイント（NAT Gatewayを使用しない場合）
-resource "aws_vpc_endpoint" "ecr_docker" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
+# Frontend ECS Task Definition
+resource "aws_ecs_task_definition" "frontend" {
+  family                   = "${var.project_name}-frontend"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.ecs_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
 
-  tags = {
-    Name = "${var.project_name}-ecr-docker-endpoint"
-  }
+  container_definitions = jsonencode([{
+    name  = "${var.project_name}-frontend"
+    image = "${aws_ecr_repository.frontend.repository_url}:latest"
+    portMappings = [{
+      containerPort = 3000
+      hostPort      = 3000
+    }]
+    environment = [
+      { name = "NEXT_PUBLIC_API_URL", value = "https://api.${var.domain_name}" },
+      { name = "NEXT_PUBLIC_PUSHER_APP_KEY", value = var.pusher_app_key },
+      { name = "NEXT_PUBLIC_PUSHER_HOST", value = "api.${var.domain_name}" },
+      { name = "NEXT_PUBLIC_PUSHER_PORT", value = "443" },
+      { name = "NEXT_PUBLIC_PUSHER_SCHEME", value = "https" },
+      { name = "NEXT_PUBLIC_PUSHER_APP_CLUSTER", value = var.pusher_app_cluster }
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = "/ecs/${var.project_name}-frontend"
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "ecs"
+      }
+    }
+  }])
 }
 
-resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.project_name}-ecr-api-endpoint"
-  }
+# Frontend CloudWatch Logs group
+resource "aws_cloudwatch_log_group" "frontend_logs" {
+  name              = "/ecs/${var.project_name}-frontend"
+  retention_in_days = 30
 }
 
-resource "aws_vpc_endpoint" "cloudwatch_logs" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.logs"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
+# Frontend ECS Service
+resource "aws_ecs_service" "frontend" {
+  name            = "${var.project_name}-frontend-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.frontend.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
 
-  tags = {
-    Name = "${var.project_name}-cloudwatch-logs-endpoint"
-  }
-}
-
-# ECS Agent 用 VPCエンドポイント
-resource "aws_vpc_endpoint" "ecs_agent" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ecs-agent"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.project_name}-ecs-agent-endpoint"
-  }
-}
-
-# SSM 用 VPCエンドポイント
-resource "aws_vpc_endpoint" "ssm" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ssm"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.project_name}-ssm-endpoint"
-  }
-}
-
-# SSM Messages 用 VPCエンドポイント
-resource "aws_vpc_endpoint" "ssmmessages" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.ssmmessages"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${var.project_name}-ssmmessages-endpoint"
-  }
-}
-
-# VPCエンドポイント用のセキュリティグループ
-resource "aws_security_group" "vpc_endpoints" {
-  name        = "${var.project_name}-vpc-endpoints-sg"
-  description = "Security group for VPC endpoints"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "HTTPS from ECS tasks"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
+  network_configuration {
+    subnets         = aws_subnet.private[*].id
     security_groups = [aws_security_group.ecs_tasks.id]
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  load_balancer {
+    target_group_arn = aws_lb_target_group.frontend.arn
+    container_name   = "${var.project_name}-frontend"
+    container_port   = 3000
   }
 
-  tags = {
-    Name = "${var.project_name}-vpc-endpoints-sg"
+  depends_on = [aws_lb_listener.https]
+}
+
+# Frontend ALB Target Group
+resource "aws_lb_target_group" "frontend" {
+  name        = "${var.project_name}-frontend-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    healthy_threshold   = "3"
+    interval            = "30"
+    protocol            = "HTTP"
+    matcher             = "200"
+    timeout             = "3"
+    path                = "/"
+    unhealthy_threshold = "2"
+  }
+}
+
+# ALB Listener Rule for Backend
+resource "aws_lb_listener_rule" "backend" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    host_header {
+      values = ["api.${var.domain_name}"]
+    }
+  }
+}
+
+# ALB Listener Rule for Frontend
+resource "aws_lb_listener_rule" "frontend" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 200
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+
+  condition {
+    host_header {
+      values = ["front.${var.domain_name}"]
+    }
+  }
+}
+
+# Route 53 Record for Backend
+resource "aws_route53_record" "backend" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "${var.backend_subdomain}.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# Route 53 Record for Frontend
+resource "aws_route53_record" "frontend" {
+  zone_id = aws_route53_zone.main.zone_id
+  name    = "${var.frontend_subdomain}.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = true
   }
 }
 
@@ -790,9 +628,14 @@ output "frontend_url" {
   value       = "https://front.${var.domain_name}"
 }
 
-output "ecr_repository_url" {
-  description = "The URL of the ECR repository"
-  value       = aws_ecr_repository.app.repository_url
+output "backend_ecr_repository_url" {
+  description = "The URL of the backend ECR repository"
+  value       = aws_ecr_repository.backend.repository_url
+}
+
+output "frontend_ecr_repository_url" {
+  description = "The URL of the frontend ECR repository"
+  value       = aws_ecr_repository.frontend.repository_url
 }
 
 output "rds_endpoint" {
