@@ -353,14 +353,14 @@ jobs:
       - run:
           name: Update ECS task definition
           command: |
-            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query taskDefinition)
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query taskDefinition)
 
             NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
               family: .family,
               taskRoleArn: .taskRoleArn,
               executionRoleArn: .executionRoleArn,
               networkMode: .networkMode,
-              containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-app:'${CIRCLE_SHA1}'"],
+              containerDefinitions: [.containerDefinitions[0] | .image = "'$ECR_ENDPOINT'/ofcrm-backend:'${CIRCLE_SHA1}'"],
               volumes: .volumes,
               placementConstraints: .placementConstraints,
               requiresCompatibilities: .requiresCompatibilities,
