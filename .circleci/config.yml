@@ -397,7 +397,7 @@ jobs:
       - run:
           name: Deploy to ECS
           command: |
-            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-app --query 'taskDefinition.taskDefinitionArn' --output text)
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query 'taskDefinition.taskDefinitionArn' --output text)
             aws ecs update-service --cluster ofcrm-cluster --service ofcrm-service --task-definition $TASK_DEFINITION --force-new-deployment
 
       - run:
