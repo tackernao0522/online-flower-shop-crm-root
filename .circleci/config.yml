@@ -320,7 +320,7 @@ jobs:
               --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
               --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
               --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
-            -t $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1} \
+            -t $ECR_ENDPOINT/ofcrm-backend:${CIRCLE_SHA1} \
             -f ./api/infra/php/Dockerfile.prod \
             ./api
 
@@ -333,7 +333,7 @@ jobs:
             docker images
 
             echo "Pushing image to ECR..."
-            docker push $ECR_ENDPOINT/ofcrm-app:${CIRCLE_SHA1}
+            docker push $ECR_ENDPOINT/ofcrm-backend:${CIRCLE_SHA1}
 
             if [ $? -ne 0 ]; then
               echo "Failed to push image to ECR"
@@ -343,7 +343,7 @@ jobs:
             echo "Image successfully pushed to ECR"
 
             echo "Describing image in ECR..."
-            aws ecr describe-images --repository-name ofcrm-app --image-ids imageTag=${CIRCLE_SHA1}
+            aws ecr describe-images --repository-name ofcrm-backend --image-ids imageTag=${CIRCLE_SHA1}
 
       - save_cache:
           paths:
