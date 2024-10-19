@@ -473,17 +473,16 @@ jobs:
           name: Update ECS task definition for frontend
           command: |
             TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${PROJECT_NAME}-frontend)
-            NEW_CONTAINER_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${PROJECT_NAME}-frontend:${CIRCLE_SHA1}" '.taskDefinition.containerDefinitions[0].image = $IMAGE')
-            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --argjson NEW_CONTAINER "$NEW_CONTAINER_DEFINITION" '.taskDefinition.containerDefinitions[0] = $NEW_CONTAINER')
+            NEW_CONTAINER_DEFINITIONS=$(echo $TASK_DEFINITION | jq --arg IMAGE "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${PROJECT_NAME}-frontend:${CIRCLE_SHA1}" '.taskDefinition.containerDefinitions | map(if .name == "'${PROJECT_NAME}-frontend'" then .image = $IMAGE else . end)')
             aws ecs register-task-definition \
               --family ${PROJECT_NAME}-frontend \
-              --container-definitions "$(echo $NEW_TASK_DEFINITION | jq -c '.taskDefinition.containerDefinitions')" \
-              --task-role-arn "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.taskRoleArn')" \
-              --execution-role-arn "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.executionRoleArn')" \
-              --network-mode "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.networkMode')" \
-              --requires-compatibilities "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.requiresCompatibilities[]')" \
-              --cpu "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.cpu')" \
-              --memory "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.memory')"
+              --container-definitions "$NEW_CONTAINER_DEFINITIONS" \
+              --task-role-arn "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskRoleArn')" \
+              --execution-role-arn "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.executionRoleArn')" \
+              --network-mode "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.networkMode')" \
+              --requires-compatibilities "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.requiresCompatibilities[]')" \
+              --cpu "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.cpu')" \
+              --memory "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.memory')"
 
   deploy-frontend:
     docker:
