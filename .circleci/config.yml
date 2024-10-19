@@ -456,6 +456,19 @@ jobs:
       - setup_remote_docker
       - aws-cli/setup
       - run:
+          name: Create .env.production file
+          command: |
+            cd front
+            echo "NEXT_PUBLIC_APP_ENV=production" > .env.production
+            echo "NEXT_PUBLIC_API_URL=https://api.${DOMAIN_NAME}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_APP_KEY=${PUSHER_APP_KEY}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_HOST=api.${DOMAIN_NAME}" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_PORT=443" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_SCHEME=https" >> .env.production
+            echo "NEXT_PUBLIC_WEBSOCKET_HOST=api.${DOMAIN_NAME}" >> .env.production
+            echo "NEXT_PUBLIC_WEBSOCKET_PORT=443" >> .env.production
+            echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER}" >> .env.production
+      - run:
           name: Configure AWS default region
           command: |
             aws configure set default.region $AWS_DEFAULT_REGION --profile default
