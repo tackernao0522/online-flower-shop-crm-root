@@ -7,14 +7,6 @@ orbs:
   aws-ecs: circleci/aws-ecs@2.1.0
   aws-cli: circleci/aws-cli@2.0.3
 
-parameters:
-  run-api-workflow:
-    type: boolean
-    default: false
-  run-frontend-workflow:
-    type: boolean
-    default: false
-
 jobs:
   build-and-test:
     machine:
@@ -53,7 +45,6 @@ jobs:
             else
               echo "Changes detected in API. Will run API tests."
               echo "export SKIP_API_TESTS=false" >> $BASH_ENV
-              echo "run-api-workflow=true" >> $BASH_ENV
             fi
 
       - run:
@@ -65,7 +56,6 @@ jobs:
             else
               echo "Changes detected in Frontend. Will run Frontend tests."
               echo "export SKIP_FRONTEND_TESTS=false" >> $BASH_ENV
-              echo "run-frontend-workflow=true" >> $BASH_ENV
             fi
 
       - run:
@@ -456,19 +446,6 @@ jobs:
       - setup_remote_docker
       - aws-cli/setup
       - run:
-          name: Create .env.production file
-          command: |
-            cd front
-            echo "NEXT_PUBLIC_APP_ENV=production" > .env.production
-            echo "NEXT_PUBLIC_API_URL=https://api.${DOMAIN_NAME}" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_APP_KEY=${PUSHER_APP_KEY}" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_HOST=api.${DOMAIN_NAME}" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_PORT=443" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_SCHEME=https" >> .env.production
-            echo "NEXT_PUBLIC_WEBSOCKET_HOST=api.${DOMAIN_NAME}" >> .env.production
-            echo "NEXT_PUBLIC_WEBSOCKET_PORT=443" >> .env.production
-            echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${PUSHER_APP_CLUSTER}" >> .env.production
-      - run:
           name: Configure AWS default region
           command: |
             aws configure set default.region $AWS_DEFAULT_REGION --profile default
@@ -545,9 +522,6 @@ workflows:
           context: my-production-context
           requires:
             - build-and-push-image
-          filters:
-            branches:
-              only: main
       - build-and-push-frontend-image:
           context:
             - my-production-context
@@ -564,25 +538,3 @@ workflows:
           filters:
             branches:
               only: main
-
-  api-workflow:
-    when:
-      equal: [true, << pipeline.parameters.run-api-workflow >>]
-    jobs:
-      - build-and-push-image:
-          context: my-production-context
-      - deploy-to-ecs:
-          context: my-production-context
-          requires:
-            - build-and-push-image
-
-  frontend-workflow:
-    when:
-      equal: [true, << pipeline.parameters.run-frontend-workflow >>]
-    jobs:
-      - build-and-push-frontend-image:
-          context: my-production-context
-      - deploy-frontend:
-          context: my-production-context
-          requires:
-            - build-and-push-frontend-image
