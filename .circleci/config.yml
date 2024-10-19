@@ -7,6 +7,14 @@ orbs:
   aws-ecs: circleci/aws-ecs@2.1.0
   aws-cli: circleci/aws-cli@2.0.3
 
+parameters:
+  run-api-workflow:
+    type: boolean
+    default: false
+  run-frontend-workflow:
+    type: boolean
+    default: false
+
 jobs:
   build-and-test:
     machine:
@@ -45,6 +53,7 @@ jobs:
             else
               echo "Changes detected in API. Will run API tests."
               echo "export SKIP_API_TESTS=false" >> $BASH_ENV
+              echo "run-api-workflow=true" >> $BASH_ENV
             fi
 
       - run:
@@ -56,6 +65,7 @@ jobs:
             else
               echo "Changes detected in Frontend. Will run Frontend tests."
               echo "export SKIP_FRONTEND_TESTS=false" >> $BASH_ENV
+              echo "run-frontend-workflow=true" >> $BASH_ENV
             fi
 
       - run:
@@ -438,6 +448,11 @@ jobs:
       - image: cimg/base:stable
     steps:
       - checkout
+      - run:
+          name: Checkout submodules
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
       - setup_remote_docker
       - aws-cli/setup
       - run:
@@ -513,10 +528,19 @@ workflows:
           filters:
             branches:
               only: main
+          when:
+            condition:
+              equal: [true, << pipeline.parameters.run-api-workflow >>]
       - deploy-to-ecs:
           context: my-production-context
           requires:
             - build-and-push-image
+          filters:
+            branches:
+              only: main
+          when:
+            condition:
+              equal: [true, << pipeline.parameters.run-api-workflow >>]
       - build-and-push-frontend-image:
           context:
             - my-production-context
@@ -525,6 +549,9 @@ workflows:
           filters:
             branches:
               only: main
+          when:
+            condition:
+              equal: [true, << pipeline.parameters.run-frontend-workflow >>]
       - deploy-frontend:
           context:
             - my-production-context
@@ -533,3 +560,6 @@ workflows:
           filters:
             branches:
               only: main
+          when:
+            condition:
+              equal: [true, << pipeline.parameters.run-frontend-workflow >>]
