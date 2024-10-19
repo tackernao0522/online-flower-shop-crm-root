@@ -528,9 +528,6 @@ workflows:
           filters:
             branches:
               only: main
-          when:
-            condition:
-              equal: [true, << pipeline.parameters.run-api-workflow >>]
       - deploy-to-ecs:
           context: my-production-context
           requires:
@@ -538,9 +535,6 @@ workflows:
           filters:
             branches:
               only: main
-          when:
-            condition:
-              equal: [true, << pipeline.parameters.run-api-workflow >>]
       - build-and-push-frontend-image:
           context:
             - my-production-context
@@ -549,9 +543,6 @@ workflows:
           filters:
             branches:
               only: main
-          when:
-            condition:
-              equal: [true, << pipeline.parameters.run-frontend-workflow >>]
       - deploy-frontend:
           context:
             - my-production-context
@@ -560,6 +551,25 @@ workflows:
           filters:
             branches:
               only: main
-          when:
-            condition:
-              equal: [true, << pipeline.parameters.run-frontend-workflow >>]
+
+  api-workflow:
+    when:
+      equal: [true, << pipeline.parameters.run-api-workflow >>]
+    jobs:
+      - build-and-push-image:
+          context: my-production-context
+      - deploy-to-ecs:
+          context: my-production-context
+          requires:
+            - build-and-push-image
+
+  frontend-workflow:
+    when:
+      equal: [true, << pipeline.parameters.run-frontend-workflow >>]
+    jobs:
+      - build-and-push-frontend-image:
+          context: my-production-context
+      - deploy-frontend:
+          context: my-production-context
+          requires:
+            - build-and-push-frontend-image
