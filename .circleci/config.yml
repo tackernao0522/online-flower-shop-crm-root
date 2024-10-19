@@ -472,9 +472,18 @@ jobs:
       - run:
           name: Update ECS task definition for frontend
           command: |
-            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${PROJECT_NAME}-frontend --query taskDefinition)
-            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "'$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${PROJECT_NAME}-frontend:${CIRCLE_SHA1}'"')
-            aws ecs register-task-definition --family ${PROJECT_NAME}-frontend --container-definitions "$NEW_TASK_DEFINITION" --task-role-arn ${ECS_TASK_ROLE_ARN} --execution-role-arn ${ECS_EXECUTION_ROLE_ARN} --network-mode awsvpc --requires-compatibilities FARGATE --cpu "256" --memory "512"
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${PROJECT_NAME}-frontend)
+            NEW_CONTAINER_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${PROJECT_NAME}-frontend:${CIRCLE_SHA1}" '.taskDefinition.containerDefinitions[0].image = $IMAGE')
+            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --argjson NEW_CONTAINER "$NEW_CONTAINER_DEFINITION" '.taskDefinition.containerDefinitions[0] = $NEW_CONTAINER')
+            aws ecs register-task-definition \
+              --family ${PROJECT_NAME}-frontend \
+              --container-definitions "$(echo $NEW_TASK_DEFINITION | jq -c '.taskDefinition.containerDefinitions')" \
+              --task-role-arn "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.taskRoleArn')" \
+              --execution-role-arn "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.executionRoleArn')" \
+              --network-mode "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.networkMode')" \
+              --requires-compatibilities "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.requiresCompatibilities[]')" \
+              --cpu "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.cpu')" \
+              --memory "$(echo $NEW_TASK_DEFINITION | jq -r '.taskDefinition.memory')"
 
   deploy-frontend:
     docker:
