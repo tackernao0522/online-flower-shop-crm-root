@@ -433,6 +433,73 @@ jobs:
           channel: ${SLACK_CHANNEL_ID_DEPLOY}
           template: basic_success_1
 
+  build-and-push-frontend-image:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - setup_remote_docker
+      - aws-cli/setup
+      - run:
+          name: Configure AWS default region
+          command: |
+            aws configure set default.region $AWS_DEFAULT_REGION --profile default
+      - run:
+          name: Build and push frontend Docker image
+          command: |
+            cd front
+            docker build -t $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${PROJECT_NAME}-frontend:${CIRCLE_SHA1} -f Dockerfile.prod .
+            aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+            docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${PROJECT_NAME}-frontend:${CIRCLE_SHA1}
+      - run:
+          name: Update ECS task definition for frontend
+          command: |
+            TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${PROJECT_NAME}-frontend --query taskDefinition)
+            NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '.containerDefinitions[0].image = "'$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/${PROJECT_NAME}-frontend:${CIRCLE_SHA1}'"')
+            aws ecs register-task-definition --family ${PROJECT_NAME}-frontend --container-definitions "$NEW_TASK_DEFINITION" --task-role-arn ${ECS_TASK_ROLE_ARN} --execution-role-arn ${ECS_EXECUTION_ROLE_ARN} --network-mode awsvpc --requires-compatibilities FARGATE --cpu "256" --memory "512"
+
+  deploy-frontend:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - aws-cli/setup
+      - run:
+          name: Deploy frontend to ECS
+          command: |
+            aws ecs update-service --cluster ${PROJECT_NAME}-cluster --service ${PROJECT_NAME}-frontend-service --task-definition ${PROJECT_NAME}-frontend --force-new-deployment
+      - run:
+          name: Wait for frontend service to be stable
+          command: |
+            aws ecs wait services-stable --cluster ${PROJECT_NAME}-cluster --services ${PROJECT_NAME}-frontend-service
+      - run:
+          name: Verify frontend deployment
+          command: |
+            HEALTH_CHECK_URL="https://front.${DOMAIN_NAME}"
+            MAX_RETRIES=10
+            RETRY_INTERVAL=30
+
+            for i in $(seq 1 $MAX_RETRIES); do
+              HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
+              if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+                echo "Deployment successful. Health check passed."
+                exit 0
+              else
+                echo "Attempt $i: Health check returned status $HEALTH_CHECK_RESPONSE. Retrying in $RETRY_INTERVAL seconds..."
+                sleep $RETRY_INTERVAL
+              fi
+            done
+
+            echo "Deployment may have failed. Health check did not pass after $MAX_RETRIES attempts."
+            exit 1
+      - slack/notify:
+          event: fail
+          channel: ${SLACK_CHANNEL_ID_FRONT_DEPLOY}
+          template: basic_fail_1
+      - slack/notify:
+          event: pass
+          channel: ${SLACK_CHANNEL_ID_FRONT_DEPLOY}
+          template: basic_success_1
+
 workflows:
   version: 2
   build-test-deploy:
@@ -450,6 +517,19 @@ workflows:
           context: my-production-context
           requires:
             - build-and-push-image
+      - build-and-push-frontend-image:
+          context:
+            - my-production-context
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
+      - deploy-frontend:
+          context:
+            - my-production-context
+          requires:
+            - build-and-push-frontend-image
           filters:
             branches:
               only: main
