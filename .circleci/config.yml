@@ -273,6 +273,7 @@ jobs:
             echo "APP_ENV=production" >> .env.production
             echo "APP_KEY=${APP_KEY}" >> .env.production
             echo "APP_DEBUG=true" >> .env.production
+            echo "LOG_CHANNEL=stack" >> .env.production
             echo "APP_URL=https://api.tkb-tech.com" >> .env.production
             echo "LOG_LEVEL=debug" >> .env.production
 
