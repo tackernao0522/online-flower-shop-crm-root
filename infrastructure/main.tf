@@ -359,8 +359,11 @@ resource "aws_ecs_task_definition" "backend" {
     }]
     environment = [
       { name = "APP_ENV", value = "production" },
+      { name = "APP_DEBUG", value = "true" },
       { name = "APP_KEY", value = var.app_key },
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
+      { name = "LOG_CHANNEL", value = "stack" },
+      { name = "LOG_LEVEL", value = "debug" },
       { name = "DB_HOST", value = aws_db_instance.mysql.address },
       { name = "DB_DATABASE", value = var.db_name },
       { name = "DB_USERNAME", value = var.db_username },
