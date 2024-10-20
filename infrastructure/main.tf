@@ -390,7 +390,7 @@ resource "aws_ecs_task_definition" "backend" {
 # Backend CloudWatch Logs group
 resource "aws_cloudwatch_log_group" "backend_logs" {
   name              = "/ecs/${var.project_name}-backend"
-  retention_in_days = 30
+  retention_in_days = 7
 }
 
 # Backend ECS Service
@@ -586,7 +586,7 @@ resource "aws_ecs_task_definition" "frontend" {
 # Frontend CloudWatch Logs group
 resource "aws_cloudwatch_log_group" "frontend_logs" {
   name              = "/ecs/${var.project_name}-frontend"
-  retention_in_days = 30
+  retention_in_days = 7
 }
 
 # Frontend ECS Service
