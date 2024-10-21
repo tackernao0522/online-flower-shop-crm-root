@@ -13,41 +13,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          submodules: true
-          fetch-depth: 0
+          submodules: "recursive"
+          token: ${{ secrets.GH_PAT }}
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # API用のSSH設定
-      - name: Set up SSH for API
+      - name: Set up SSH for Submodules
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.CI_SSH_PRIVATE_KEY_API }}" > ~/.ssh/id_rsa_api
-          chmod 600 ~/.ssh/id_rsa_api
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo -e "Host github.com\n\tIdentityFile ~/.ssh/id_rsa_api\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
 
-      # Frontend用のSSH設定
-      - name: Set up SSH for Frontend
+      - name: Update submodules
         run: |
-          echo "${{ secrets.CI_SSH_PRIVATE_KEY_FRONT }}" > ~/.ssh/id_rsa_front
-          chmod 600 ~/.ssh/id_rsa_front
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo -e "Host github.com\n\tIdentityFile ~/.ssh/id_rsa_front\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-
-      # SSH接続のテスト
-      - name: Test SSH Connection
-        run: |
-          if ! ssh -T git@github.com; then
-            echo "SSH connection failed!"
-            exit 1
-          fi
-
-      # サブモジュールの同期と更新
-      - name: Sync and update submodules
-        run: |
-          git config submodule.api.url git@github.com:tackernao0522/online-flower-shop-crm-api.git
-          git config submodule.front.url git@github.com:tackernao0522/online-flower-shop-crm-front.git
-          git submodule sync
-          git submodule update --init --recursive --depth 1
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          git submodule update --init --recursive
 
       # APIの変更をチェック
       - name: Check for API changes
@@ -101,19 +83,21 @@ jobs:
       - name: Install Composer Dependencies
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          cd projects/api
+          cd api
           composer install --no-progress --no-suggest --prefer-dist --optimize-autoloader
 
       # データベースマイグレーションを実行
       - name: Run database migrations
         if: env.SKIP_API_TESTS == 'false'
         run: |
+          cd api
           php artisan migrate --force
 
       # Laravelテストを実行
       - name: Run Laravel Tests
         if: env.SKIP_API_TESTS == 'false'
         run: |
+          cd api
           php artisan test
 
   # フロントエンドのビルドとテスト
@@ -125,16 +109,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          submodules: true
-          fetch-depth: 0
+          submodules: "recursive"
+          token: ${{ secrets.GH_PAT }}
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      # Frontend用のSSH設定
-      - name: Set up SSH for Frontend
+      - name: Set up SSH for Submodules
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          echo "${{ secrets.CI_SSH_PRIVATE_KEY_FRONT }}" > ~/.ssh/id_rsa_front
-          chmod 600 ~/.ssh/id_rsa_front
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo -e "Host github.com\n\tIdentityFile ~/.ssh/id_rsa_front\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+
+      - name: Update submodules
+        run: |
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          git submodule update --init --recursive
 
       - name: Install Node.js
         uses: actions/setup-node@v3
@@ -144,12 +135,13 @@ jobs:
       - name: Install Node.js dependencies
         if: env.SKIP_FRONTEND_TESTS == 'false'
         run: |
-          cd projects/front
+          cd front
           npm install
 
       - name: Run Frontend Tests
         if: env.SKIP_FRONTEND_TESTS == 'false'
         run: |
+          cd front
           npm test
 
   build-and-push-backend-image:
@@ -160,8 +152,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          submodules: true
-          fetch-depth: 0
+          submodules: "recursive"
+          token: ${{ secrets.GH_PAT }}
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Set up SSH for Submodules
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Update submodules
+        run: |
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          git submodule update --init --recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -175,7 +182,7 @@ jobs:
           ECR_REPOSITORY=backend-repository
           IMAGE_TAG=${{ github.sha }}
 
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./projects/api/Dockerfile .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./api/Dockerfile ./api
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
   build-and-push-frontend-image:
@@ -186,8 +193,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          submodules: true
-          fetch-depth: 0
+          submodules: "recursive"
+          token: ${{ secrets.GH_PAT }}
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Set up SSH for Submodules
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Update submodules
+        run: |
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          git submodule update --init --recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -201,7 +223,7 @@ jobs:
           ECR_REPOSITORY=frontend-repository
           IMAGE_TAG=${{ github.sha }}
 
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./projects/front/Dockerfile .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./front/Dockerfile ./front
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
   deploy-backend-to-ecs:
