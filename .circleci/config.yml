@@ -317,6 +317,7 @@ jobs:
 
             echo "Building Docker image..."
             docker build \
+              --build-arg AWS_REGION=$AWS_REGION \
               --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
               --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
               --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
