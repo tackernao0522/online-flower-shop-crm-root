@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          submodules: true # サブモジュールのチェックアウトを有効にする
+          submodules: true
           fetch-depth: 0
 
       - name: Set up SSH for GitHub
@@ -23,6 +23,10 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+
+      - name: Test SSH Connection
+        run: |
+          ssh -T git@github.com
 
       - name: Sync and update submodules
         run: |
