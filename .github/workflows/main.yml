@@ -16,14 +16,22 @@ jobs:
           submodules: false
           token: ${{ secrets.GH_PAT }}
 
-      - name: Configure SSH for GitHub
+      - name: Set up SSH for GitHub
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n\tIdentityFile ~/.ssh/id_rsa" > ~/.ssh/config
           chmod 600 ~/.ssh/config
 
-      - name: Checkout Submodules with SSH
+      - name: Update .gitmodules to use SSH
+        run: |
+          sed -i 's|https://github.com/|git@github.com:|' .gitmodules
+
+      - name: Checkout Submodules
         run: |
           git submodule sync
           git submodule update --init --recursive --depth 1
