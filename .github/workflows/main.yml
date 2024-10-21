@@ -1,0 +1,253 @@
+name: Build, Test, and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: true # サブモジュールのチェックアウトを有効にする
+          fetch-depth: 0
+
+      - name: Set up SSH for GitHub
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CI_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+
+      - name: Sync and update submodules
+        run: |
+          git submodule sync
+          git submodule update --init --recursive --depth 1
+
+      - name: Check for API changes
+        id: check_api_changes
+        run: |
+          if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
+            echo "No changes in API. Skipping API tests."
+            echo "::set-output name=skip_api_tests::true"
+          else
+            echo "Changes detected in API. Will run API tests."
+            echo "::set-output name=skip_api_tests::false"
+          fi
+
+      - name: Check for Frontend changes
+        id: check_frontend_changes
+        run: |
+          if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
+            echo "No changes in Frontend. Skipping Frontend tests."
+            echo "::set-output name=skip_frontend_tests::true"
+          else
+            echo "Changes detected in Frontend. Will run Frontend tests."
+            echo "::set-output name=skip_frontend_tests::false"
+          fi
+      - name: Install Required Packages for API
+        if: steps.check_api_changes.outputs.skip_api_tests == 'false'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+
+      - name: Install Composer
+        if: steps.check_api_changes.outputs.skip_api_tests == 'false'
+        run: |
+          curl -sS https://getcomposer.org/installer | php
+          sudo mv composer.phar /usr/local/bin/composer
+
+      - name: Configure MySQL
+        if: steps.check_api_changes.outputs.skip_api_tests == 'false'
+        run: |
+          sudo systemctl start mysql
+          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.CI_MYSQL_DATABASE }};"
+          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.CI_MYSQL_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.CI_MYSQL_PASSWORD }}';"
+          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.CI_MYSQL_DATABASE }}.* TO '${{ secrets.CI_MYSQL_USER }}'@'localhost';"
+          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "FLUSH PRIVILEGES;"
+      - name: Install Composer Dependencies
+        if: steps.check_api_changes.outputs.skip_api_tests == 'false'
+        run: |
+          cd projects/api
+          composer install --no-progress --no-suggest --prefer-dist --optimize-autoloader
+
+      - name: Run database migrations
+        if: steps.check_api_changes.outputs.skip_api_tests == 'false'
+        run: |
+          php artisan migrate --force
+
+      - name: Run Laravel Tests
+        if: steps.check_api_changes.outputs.skip_api_tests == 'false'
+        run: |
+          php artisan test
+
+  build-and-test-frontend:
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18.17.0"
+
+      - name: Install Node.js dependencies
+        if: steps.check_frontend_changes.outputs.skip_frontend_tests == 'false'
+        run: |
+          cd projects/front
+          npm install
+
+      - name: Run Frontend Tests
+        if: steps.check_frontend_changes.outputs.skip_frontend_tests == 'false'
+        run: |
+          npm test
+
+  build-and-push-backend-image:
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker image
+        run: |
+          ECR_REGISTRY=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          ECR_REPOSITORY=backend-repository
+          IMAGE_TAG=${{ github.sha }}
+
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./projects/api/Dockerfile .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  build-and-push-frontend-image:
+    runs-on: ubuntu-22.04
+    needs: build-and-test-frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker image
+        run: |
+          ECR_REGISTRY=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          ECR_REPOSITORY=frontend-repository
+          IMAGE_TAG=${{ github.sha }}
+
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ./projects/front/Dockerfile .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  deploy-backend-to-ecs:
+    runs-on: ubuntu-22.04
+    needs: build-and-push-backend-image
+
+    steps:
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to ECS
+        run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition backend-task --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster backend-cluster --service backend-service --task-definition $TASK_DEFINITION --force-new-deployment
+
+      - name: Wait for ECS service to be stable
+        run: |
+          aws ecs wait services-stable --cluster backend-cluster --services backend-service
+
+      - name: Verify backend deployment
+        run: |
+          HEALTH_CHECK_URL="https://api.yourdomain.com/health"
+          HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
+          if [ "$HEALTH_CHECK_RESPONSE" != "200" ]; then
+            echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
+            exit 1
+          else
+            echo "Deployment successful. Health check passed."
+          fi
+
+  deploy-frontend-to-ecs:
+    runs-on: ubuntu-22.04
+    needs: build-and-push-frontend-image
+
+    steps:
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to ECS
+        run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition frontend-task --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster frontend-cluster --service frontend-service --task-definition $TASK_DEFINITION --force-new-deployment
+
+      - name: Wait for ECS service to be stable
+        run: |
+          aws ecs wait services-stable --cluster frontend-cluster --services frontend-service
+
+      - name: Verify frontend deployment
+        run: |
+          HEALTH_CHECK_URL="https://yourdomain.com/health"
+          HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
+          if [ "$HEALTH_CHECK_RESPONSE" != "200" ]; then
+            echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
+            exit 1
+          else
+            echo "Deployment successful. Health check passed."
+          fi
+
+  notify-slack:
+    runs-on: ubuntu-22.04
+    needs: [deploy-backend-to-ecs, deploy-frontend-to-ecs]
+
+    steps:
+      - name: Slack Notification (on fail)
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          fields: repo, commit, author, message
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Slack Notification (on success)
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          fields: repo, commit, author, message
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
