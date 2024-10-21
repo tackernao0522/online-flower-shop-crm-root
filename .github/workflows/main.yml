@@ -36,7 +36,10 @@ jobs:
       # SSH接続のテスト
       - name: Test SSH Connection
         run: |
-          ssh -T git@github.com || exit 1
+          if ! ssh -T git@github.com; then
+            echo "SSH connection failed!"
+            exit 1
+          fi
 
       # サブモジュールの同期と更新
       - name: Sync and update submodules
@@ -50,10 +53,10 @@ jobs:
         run: |
           if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
             echo "No changes in API. Skipping API tests."
-            echo "skip_api_tests=true" >> $GITHUB_ENV
+            echo "SKIP_API_TESTS=true" >> $GITHUB_ENV
           else
             echo "Changes detected in API. Will run API tests."
-            echo "skip_api_tests=false" >> $GITHUB_ENV
+            echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
           fi
 
       # Frontendの変更をチェック
@@ -62,29 +65,29 @@ jobs:
         run: |
           if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
             echo "No changes in Frontend. Skipping Frontend tests."
-            echo "skip_frontend_tests=true" >> $GITHUB_ENV
+            echo "SKIP_FRONTEND_TESTS=true" >> $GITHUB_ENV
           else
             echo "Changes detected in Frontend. Will run Frontend tests."
-            echo "skip_frontend_tests=false" >> $GITHUB_ENV
+            echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
           fi
 
       # API用の必要なパッケージをインストール
       - name: Install Required Packages for API
-        if: env.skip_api_tests == 'false'
+        if: env.SKIP_API_TESTS == 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
 
       # Composerをインストール
       - name: Install Composer
-        if: env.skip_api_tests == 'false'
+        if: env.SKIP_API_TESTS == 'false'
         run: |
           curl -sS https://getcomposer.org/installer | php
           sudo mv composer.phar /usr/local/bin/composer
 
       # MySQLを設定
       - name: Configure MySQL
-        if: env.skip_api_tests == 'false'
+        if: env.SKIP_API_TESTS == 'false'
         run: |
           sudo systemctl start mysql
           sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.CI_MYSQL_DATABASE }};"
@@ -94,20 +97,20 @@ jobs:
 
       # Composerの依存関係をインストール
       - name: Install Composer Dependencies
-        if: env.skip_api_tests == 'false'
+        if: env.SKIP_API_TESTS == 'false'
         run: |
           cd projects/api
           composer install --no-progress --no-suggest --prefer-dist --optimize-autoloader
 
       # データベースマイグレーションを実行
       - name: Run database migrations
-        if: env.skip_api_tests == 'false'
+        if: env.SKIP_API_TESTS == 'false'
         run: |
           php artisan migrate --force
 
       # Laravelテストを実行
       - name: Run Laravel Tests
-        if: env.skip_api_tests == 'false'
+        if: env.SKIP_API_TESTS == 'false'
         run: |
           php artisan test
 
@@ -123,19 +126,27 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      - name: Set up Node.js
+      # Frontend用のSSH設定
+      - name: Set up SSH for Frontend
+        run: |
+          echo "${{ secrets.CI_SSH_PRIVATE_KEY_FRONT }}" > ~/.ssh/id_rsa_front
+          chmod 600 ~/.ssh/id_rsa_front
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo -e "Host github.com\n\tIdentityFile ~/.ssh/id_rsa_front\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+
+      - name: Install Node.js
         uses: actions/setup-node@v3
         with:
           node-version: "18.17.0"
 
       - name: Install Node.js dependencies
-        if: steps.check_frontend_changes.outputs.skip_frontend_tests == 'false'
+        if: env.SKIP_FRONTEND_TESTS == 'false'
         run: |
           cd projects/front
           npm install
 
       - name: Run Frontend Tests
-        if: steps.check_frontend_changes.outputs.skip_frontend_tests == 'false'
+        if: env.SKIP_FRONTEND_TESTS == 'false'
         run: |
           npm test
 
