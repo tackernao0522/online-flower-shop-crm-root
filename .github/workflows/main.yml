@@ -30,9 +30,11 @@ jobs:
       - name: Update .gitmodules to use SSH
         run: |
           sed -i 's|https://github.com/|git@github.com:|' .gitmodules
+          cat .gitmodules
 
       - name: Checkout Submodules
         run: |
+          git config --global url."https://oauth2:${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
           git submodule sync
           git submodule update --init --recursive --depth 1
 
