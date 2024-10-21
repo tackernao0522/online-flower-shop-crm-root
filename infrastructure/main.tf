@@ -178,6 +178,19 @@ resource "aws_vpc_endpoint" "s3" {
   }
 }
 
+resource "aws_vpc_endpoint" "execute_api" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.execute-api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${var.project_name}-execute-api-endpoint"
+  }
+}
+
 # 利用可能なAZのデータソース
 data "aws_availability_zones" "available" {
   state = "available"
@@ -417,7 +430,8 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "PUSHER_PORT", value = "443" },
       { name = "PUSHER_SCHEME", value = "https" },
       { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
-      { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" }
+      { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" },
+      { name = "PUSHER_DEBUG", value = "true" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -519,6 +533,11 @@ resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy_attachment" "ecs_task_execute_api" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
+}
+
 # Security Group for ECS Tasks
 resource "aws_security_group" "ecs_tasks" {
   name        = "${var.project_name}-ecs-tasks-sg"
@@ -552,6 +571,15 @@ resource "aws_security_group" "ecs_tasks" {
     to_port     = 0
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_security_group_rule" "ecs_tasks_to_pusher" {
+  type        = "egress"
+  from_port   = 443
+  to_port     = 443
+  protocol    = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]  // Pusherのサービスの特定のIPアドレス範囲がわかる場合は、それを指定することをお勧めします
+  security_group_id = aws_security_group.ecs_tasks.id
 }
 
 # VPCエンドポイント用のセキュリティグループ
