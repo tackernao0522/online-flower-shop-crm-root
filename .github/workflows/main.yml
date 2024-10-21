@@ -27,8 +27,8 @@ jobs:
           chmod 600 ~/.ssh/id_rsa_api
           chmod 600 ~/.ssh/id_rsa_front
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo "Host github.com-api\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_api" >> ~/.ssh/config
-          echo "Host github.com-front\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_front" >> ~/.ssh/config
+          echo -e "Host github.com-api\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_api" >> ~/.ssh/config
+          echo -e "Host github.com-front\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_front" >> ~/.ssh/config
 
       - name: Update submodules
         run: |
@@ -114,20 +114,23 @@ jobs:
         with:
           submodules: "recursive"
           token: ${{ secrets.GH_PAT }}
-          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Set up SSH for Submodules
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PRIVATE_KEY_API: ${{ secrets.CI_SSH_PRIVATE_KEY_API }}
+          SSH_PRIVATE_KEY_FRONT: ${{ secrets.CI_SSH_PRIVATE_KEY_FRONT }}
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          echo "$SSH_PRIVATE_KEY_API" > ~/.ssh/id_rsa_api
+          echo "$SSH_PRIVATE_KEY_FRONT" > ~/.ssh/id_rsa_front
+          chmod 600 ~/.ssh/id_rsa_api
+          chmod 600 ~/.ssh/id_rsa_front
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo -e "Host github.com-api\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_api" >> ~/.ssh/config
+          echo -e "Host github.com-front\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_front" >> ~/.ssh/config
 
       - name: Update submodules
         run: |
-          git config --global url."git@github.com:".insteadOf "https://github.com/"
           git submodule update --init --recursive
 
       - name: Install Node.js
@@ -157,20 +160,23 @@ jobs:
         with:
           submodules: "recursive"
           token: ${{ secrets.GH_PAT }}
-          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Set up SSH for Submodules
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PRIVATE_KEY_API: ${{ secrets.CI_SSH_PRIVATE_KEY_API }}
+          SSH_PRIVATE_KEY_FRONT: ${{ secrets.CI_SSH_PRIVATE_KEY_FRONT }}
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          echo "$SSH_PRIVATE_KEY_API" > ~/.ssh/id_rsa_api
+          echo "$SSH_PRIVATE_KEY_FRONT" > ~/.ssh/id_rsa_front
+          chmod 600 ~/.ssh/id_rsa_api
+          chmod 600 ~/.ssh/id_rsa_front
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo -e "Host github.com-api\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_api" >> ~/.ssh/config
+          echo -e "Host github.com-front\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_front" >> ~/.ssh/config
 
       - name: Update submodules
         run: |
-          git config --global url."git@github.com:".insteadOf "https://github.com/"
           git submodule update --init --recursive
 
       - name: Set up Docker Buildx
@@ -198,20 +204,23 @@ jobs:
         with:
           submodules: "recursive"
           token: ${{ secrets.GH_PAT }}
-          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Set up SSH for Submodules
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PRIVATE_KEY_API: ${{ secrets.CI_SSH_PRIVATE_KEY_API }}
+          SSH_PRIVATE_KEY_FRONT: ${{ secrets.CI_SSH_PRIVATE_KEY_FRONT }}
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          echo "$SSH_PRIVATE_KEY_API" > ~/.ssh/id_rsa_api
+          echo "$SSH_PRIVATE_KEY_FRONT" > ~/.ssh/id_rsa_front
+          chmod 600 ~/.ssh/id_rsa_api
+          chmod 600 ~/.ssh/id_rsa_front
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo -e "Host github.com-api\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_api" >> ~/.ssh/config
+          echo -e "Host github.com-front\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/id_rsa_front" >> ~/.ssh/config
 
       - name: Update submodules
         run: |
-          git config --global url."git@github.com:".insteadOf "https://github.com/"
           git submodule update --init --recursive
 
       - name: Set up Docker Buildx
