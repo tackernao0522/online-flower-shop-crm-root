@@ -33,19 +33,23 @@ jobs:
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           echo -e "Host github.com\n\tIdentityFile ~/.ssh/id_rsa_front\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
+      # APIへのSSH接続テスト
       - name: Test SSH Connection for API
         run: |
-          ssh -T git@github.com || exit 1
+          ssh -i ~/.ssh/id_rsa_api -T git@github.com || exit 1
 
+      # FrontendへのSSH接続テスト
       - name: Test SSH Connection for Frontend
         run: |
-          ssh -T git@github.com || exit 1
+          ssh -i ~/.ssh/id_rsa_front -T git@github.com || exit 1
 
+      # サブモジュールの同期と更新
       - name: Sync and update submodules
         run: |
           git submodule sync
           git submodule update --init --recursive --depth 1
 
+      # APIの変更をチェック
       - name: Check for API changes
         id: check_api_changes
         run: |
@@ -57,6 +61,7 @@ jobs:
             echo "::set-output name=skip_api_tests::false"
           fi
 
+      # Frontendの変更をチェック
       - name: Check for Frontend changes
         id: check_frontend_changes
         run: |
@@ -68,19 +73,21 @@ jobs:
             echo "::set-output name=skip_frontend_tests::false"
           fi
 
-      # APIのテストと依存パッケージインストール
+      # API用の必要なパッケージをインストール
       - name: Install Required Packages for API
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
 
+      # Composerをインストール
       - name: Install Composer
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
           curl -sS https://getcomposer.org/installer | php
           sudo mv composer.phar /usr/local/bin/composer
 
+      # MySQLを設定
       - name: Configure MySQL
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
@@ -90,22 +97,26 @@ jobs:
           sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.CI_MYSQL_DATABASE }}.* TO '${{ secrets.CI_MYSQL_USER }}'@'localhost';"
           sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "FLUSH PRIVILEGES;"
 
+      # Composerの依存関係をインストール
       - name: Install Composer Dependencies
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
           cd projects/api
           composer install --no-progress --no-suggest --prefer-dist --optimize-autoloader
 
+      # データベースマイグレーションを実行
       - name: Run database migrations
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
           php artisan migrate --force
 
+      # Laravelテストを実行
       - name: Run Laravel Tests
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
           php artisan test
 
+  # フロントエンドのビルドとテスト
   build-and-test-frontend:
     runs-on: ubuntu-22.04
     needs: build-and-test
