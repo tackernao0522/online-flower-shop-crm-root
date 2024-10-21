@@ -16,17 +16,30 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      - name: Set up SSH for GitHub
+      # API用のSSH設定
+      - name: Set up SSH for API
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.CI_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          echo "${{ secrets.CI_SSH_PRIVATE_KEY_API }}" > ~/.ssh/id_rsa_api
+          chmod 600 ~/.ssh/id_rsa_api
           ssh-keyscan github.com >> ~/.ssh/known_hosts
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+          echo -e "Host github.com\n\tIdentityFile ~/.ssh/id_rsa_api\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
 
-      - name: Test SSH Connection
+      # Frontend用のSSH設定
+      - name: Set up SSH for Frontend
         run: |
-          ssh -T git@github.com
+          echo "${{ secrets.CI_SSH_PRIVATE_KEY_FRONT }}" > ~/.ssh/id_rsa_front
+          chmod 600 ~/.ssh/id_rsa_front
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          echo -e "Host github.com\n\tIdentityFile ~/.ssh/id_rsa_front\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+
+      - name: Test SSH Connection for API
+        run: |
+          ssh -T git@github.com || exit 1
+
+      - name: Test SSH Connection for Frontend
+        run: |
+          ssh -T git@github.com || exit 1
 
       - name: Sync and update submodules
         run: |
@@ -54,6 +67,8 @@ jobs:
             echo "Changes detected in Frontend. Will run Frontend tests."
             echo "::set-output name=skip_frontend_tests::false"
           fi
+
+      # APIのテストと依存パッケージインストール
       - name: Install Required Packages for API
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
@@ -74,6 +89,7 @@ jobs:
           sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.CI_MYSQL_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.CI_MYSQL_PASSWORD }}';"
           sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.CI_MYSQL_DATABASE }}.* TO '${{ secrets.CI_MYSQL_USER }}'@'localhost';"
           sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "FLUSH PRIVILEGES;"
+
       - name: Install Composer Dependencies
         if: steps.check_api_changes.outputs.skip_api_tests == 'false'
         run: |
