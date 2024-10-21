@@ -44,6 +44,8 @@ jobs:
       # サブモジュールの同期と更新
       - name: Sync and update submodules
         run: |
+          git config submodule.api.url git@github.com:tackernao0522/online-flower-shop-crm-api.git
+          git config submodule.front.url git@github.com:tackernao0522/online-flower-shop-crm-front.git
           git submodule sync
           git submodule update --init --recursive --depth 1
 
