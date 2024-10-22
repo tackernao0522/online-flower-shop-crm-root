@@ -105,6 +105,7 @@ jobs:
 
       - name: Cache Composer packages
         uses: actions/cache@v3
+        if: env.SKIP_API_TESTS == 'false'
         with:
           path: ${{ github.workspace }}/api/src/vendor
           key: ${{ runner.os }}-composer-${{ hashFiles('api/src/composer.lock') }}
@@ -179,6 +180,7 @@ jobs:
 
       - name: Cache Node.js modules
         uses: actions/cache@v3
+        if: env.SKIP_FRONTEND_TESTS == 'false'
         with:
           path: ${{ github.workspace }}/front/node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('front/package-lock.json') }}
