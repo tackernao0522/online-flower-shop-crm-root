@@ -211,6 +211,14 @@ resource "aws_security_group" "alb" {
   }
 
   ingress {
+    description = "Allow WebSocket connections"
+    from_port   = 6001
+    to_port     = 6001
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
     description = "Allow HTTPS from anywhere"
     from_port   = 443
     to_port     = 443
@@ -218,13 +226,6 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    description = "Allow WebSocket connections"
-    from_port   = 6001
-    to_port     = 6001
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   egress {
     from_port   = 0
@@ -410,13 +411,14 @@ resource "aws_lb_target_group" "websocket" {
   target_type = "ip"
 
   health_check {
-    healthy_threshold   = "2"
-    interval            = "30"
-    protocol            = "HTTP"
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
     matcher             = "200"
-    timeout             = "5"
     path                = "/health"
-    unhealthy_threshold = "3"
+    protocol           = "HTTP"
+    timeout            = 10
+    unhealthy_threshold = 3
   }
 
   stickiness {
@@ -430,7 +432,7 @@ resource "aws_lb_target_group" "websocket" {
 # WebSocket用のリスナールール
 resource "aws_lb_listener_rule" "websocket" {
   listener_arn = aws_lb_listener.https.arn
-  priority     = 90  # backendルール（100）より前に評価
+  priority     = 90
 
   action {
     type             = "forward"
@@ -445,7 +447,11 @@ resource "aws_lb_listener_rule" "websocket" {
 
   condition {
     path_pattern {
-      values = ["/app/*", "/ws/*"]
+      values = [
+        "/app/*",
+        "/ws/*",
+        "/broadcasting/*"
+      ]
     }
   }
 }
@@ -481,6 +487,8 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
       { name = "LOG_CHANNEL", value = "stack" },
       { name = "LOG_LEVEL", value = "debug" },
+      { name = "PUSHER_DEBUG", value = "true" },
+      { name = "LARAVEL_WEBSOCKETS_DEBUG", value = "true" },
       { name = "DB_HOST", value = aws_db_instance.mysql.address },
       { name = "DB_DATABASE", value = var.db_name },
       { name = "DB_USERNAME", value = var.db_username },
@@ -496,6 +504,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
       { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" },
       { name = "LARAVEL_WEBSOCKETS_PORT", value = "6001" },
+      { name = "LARAVEL_WEBSOCKETS_HOST", value = "0.0.0.0" },
       { name = "LARAVEL_WEBSOCKETS_SSL_LOCAL_CERT", value = "" },
       { name = "LARAVEL_WEBSOCKETS_SSL_LOCAL_PK", value = "" },
       { name = "LARAVEL_WEBSOCKETS_SSL_PASSPHRASE", value = "" },
@@ -633,18 +642,19 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   ingress {
-    protocol    = "tcp"
-    from_port   = 443
-    to_port     = 443
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
     protocol        = "tcp"
     from_port       = 6001
     to_port         = 6001
     security_groups = [aws_security_group.alb.id]
   }
+
+  ingress {
+    protocol        = "tcp"
+    from_port       = 443
+    to_port         = 443
+    security_groups = [aws_security_group.alb.id]
+  }
+
 
   # 全てのアウトバウンドトラフィックを許可
   egress {
