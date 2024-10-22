@@ -218,6 +218,14 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "Allow WebSocket connections"
+    from_port   = 6001
+    to_port     = 6001
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -393,6 +401,55 @@ resource "aws_ecs_cluster" "main" {
   name = "${var.project_name}-cluster"
 }
 
+# WebSocket用のターゲットグループ
+resource "aws_lb_target_group" "websocket" {
+  name        = "${var.project_name}-websocket-tg"
+  port        = 6001
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    healthy_threshold   = "2"
+    interval            = "30"
+    protocol            = "HTTP"
+    matcher             = "200"
+    timeout             = "5"
+    path                = "/health"
+    unhealthy_threshold = "3"
+  }
+
+  stickiness {
+    type            = "app_cookie"
+    cookie_duration = 86400
+    cookie_name     = "websocket_session"
+    enabled         = true
+  }
+}
+
+# WebSocket用のリスナールール
+resource "aws_lb_listener_rule" "websocket" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 90  # backendルール（100）より前に評価
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.websocket.arn
+  }
+
+  condition {
+    host_header {
+      values = ["api.${var.domain_name}"]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/app/*", "/ws/*"]
+    }
+  }
+}
+
 # Backend ECS Task Definition
 resource "aws_ecs_task_definition" "backend" {
   family                   = "${var.project_name}-backend"
@@ -406,10 +463,17 @@ resource "aws_ecs_task_definition" "backend" {
   container_definitions = jsonencode([{
     name  = "${var.project_name}-backend"
     image = "${aws_ecr_repository.backend.repository_url}:latest"
-    portMappings = [{
-      containerPort = 80
-      hostPort      = 80
-    }]
+    portMappings = [
+      {
+        containerPort = 80
+        hostPort      = 80
+      },
+      {
+        containerPort = 6001
+        hostPort      = 6001
+        protocol      = "tcp"
+      }
+    ]
     environment = [
       { name = "APP_ENV", value = "production" },
       { name = "APP_DEBUG", value = "true" },
@@ -431,6 +495,10 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "PUSHER_SCHEME", value = "https" },
       { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
       { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" },
+      { name = "LARAVEL_WEBSOCKETS_PORT", value = "6001" },
+      { name = "LARAVEL_WEBSOCKETS_SSL_LOCAL_CERT", value = "" },
+      { name = "LARAVEL_WEBSOCKETS_SSL_LOCAL_PK", value = "" },
+      { name = "LARAVEL_WEBSOCKETS_SSL_PASSPHRASE", value = "" },
       { name = "PUSHER_DEBUG", value = "true" }
     ]
     logConfiguration = {
@@ -469,6 +537,12 @@ resource "aws_ecs_service" "backend" {
     target_group_arn = aws_lb_target_group.backend.arn
     container_name   = "${var.project_name}-backend"
     container_port   = 80
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.websocket.arn
+    container_name   = "${var.project_name}-backend"
+    container_port   = 6001
   }
 
   depends_on = [aws_lb_listener.https]
@@ -558,28 +632,31 @@ resource "aws_security_group" "ecs_tasks" {
     security_groups = [aws_security_group.alb.id]
   }
 
-    ingress {
+  ingress {
     protocol    = "tcp"
     from_port   = 443
     to_port     = 443
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    protocol        = "tcp"
+    from_port       = 6001
+    to_port         = 6001
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  # 全てのアウトバウンドトラフィックを許可
   egress {
-    protocol    = "-1"
     from_port   = 0
     to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-}
 
-resource "aws_security_group_rule" "ecs_tasks_to_pusher" {
-  type        = "egress"
-  from_port   = 443
-  to_port     = 443
-  protocol    = "tcp"
-  cidr_blocks = ["0.0.0.0/0"]  // Pusherのサービスの特定のIPアドレス範囲がわかる場合は、それを指定することをお勧めします
-  security_group_id = aws_security_group.ecs_tasks.id
+  tags = {
+    Name = "${var.project_name}-ecs-tasks-sg"
+  }
 }
 
 # VPCエンドポイント用のセキュリティグループ
@@ -617,13 +694,13 @@ resource "aws_lb_target_group" "backend" {
   target_type = "ip"
 
   health_check {
-    healthy_threshold   = "3"
+    healthy_threshold   = "2"
     interval            = "30"
     protocol            = "HTTP"
     matcher             = "200"
-    timeout             = "3"
+    timeout             = "5"
     path                = "/health"
-    unhealthy_threshold = "2"
+    unhealthy_threshold = "3"
   }
 }
 

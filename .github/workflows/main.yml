@@ -268,6 +268,10 @@ jobs:
           echo "PUSHER_SCHEME=https" >> .env.production
           echo "PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
           echo "LARAVEL_WEBSOCKETS_ENABLED=true" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_PORT=6001" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_SSL_LOCAL_CERT=" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_SSL_LOCAL_PK=" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_SSL_PASSPHRASE=" >> .env.production
 
           echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.production
           echo "JWT_ALGO=${{ secrets.JWT_ALGO }}" >> .env.production
@@ -300,7 +304,22 @@ jobs:
             taskRoleArn: .taskRoleArn,
             executionRoleArn: .executionRoleArn,
             networkMode: .networkMode,
-            containerDefinitions: [.containerDefinitions[0] | .image = "${{ steps.login-ecr.outputs.registry }}/ofcrm-backend:${{ github.sha }}"],
+            containerDefinitions: [
+              .containerDefinitions[0] |
+              .image = "${{ steps.login-ecr.outputs.registry }}/ofcrm-backend:${{ github.sha }}" |
+              .portMappings = [
+                {
+                  "containerPort": 80,
+                  "hostPort": 80,
+                  "protocol": "tcp"
+                },
+                {
+                  "containerPort": 6001,
+                  "hostPort": 6001,
+                  "protocol": "tcp"
+                }
+              ]
+            ],
             volumes: .volumes,
             placementConstraints: .placementConstraints,
             requiresCompatibilities: .requiresCompatibilities,
@@ -340,19 +359,68 @@ jobs:
           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query 'taskDefinition.taskDefinitionArn' --output text)
           aws ecs update-service --cluster ofcrm-cluster --service ofcrm-backend-service --task-definition $TASK_DEFINITION --force-new-deployment
 
+      - name: Initial wait for service stability
+        run: |
+          echo "Waiting for ECS service to start deploying..."
+          sleep 30  # 初期待機時間を設定
+
       - name: Wait for service to be stable
         run: |
+          echo "Waiting for ECS service to be stable..."
           aws ecs wait services-stable --cluster ofcrm-cluster --services ofcrm-backend-service
+
+          # 追加の待機時間（コンテナの初期化用）
+          echo "Waiting additional time for container initialization..."
+          sleep 60
 
       - name: Verify deployment
         run: |
           HEALTH_CHECK_URL="https://api.tkb-tech.com/health"
-          HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
-          if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
-            echo "Deployment successful. Health check passed."
+          MAX_RETRIES=20
+          RETRY_INTERVAL=30
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+
+            if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+              echo "Health check passed!"
+              break
+            elif [ "$HEALTH_CHECK_RESPONSE" = "503" ]; then
+              echo "Service temporarily unavailable. Retrying..."
+            else
+              echo "Got response code: $HEALTH_CHECK_RESPONSE"
+            fi
+
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
+              sleep $RETRY_INTERVAL
+            else
+              echo "Health check failed after $MAX_RETRIES attempts"
+              exit 1
+            fi
+          done
+
+      - name: Verify WebSocket
+        if: success()
+        continue-on-error: true
+        run: |
+          echo "Testing WebSocket endpoints..."
+
+          # WebSocket接続テスト
+          WS_CHECK_URL="https://api.tkb-tech.com/app/test"
+          echo "Testing WebSocket endpoint: $WS_CHECK_URL"
+          WS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Connection: upgrade" \
+            -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Version: 13" \
+            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+            $WS_CHECK_URL || echo "failed")
+
+          if [ "$WS_RESPONSE" = "101" ] || [ "$WS_RESPONSE" = "400" ]; then
+            echo "WebSocket endpoint is accessible"
           else
-            echo "Deployment may have failed. Health check returned status $HEALTH_CHECK_RESPONSE"
-            exit 1
+            echo "WebSocket check returned: $WS_RESPONSE (This is not failing the deployment)"
           fi
 
       - name: Slack Notification
@@ -459,29 +527,44 @@ jobs:
         run: |
           aws ecs update-service --cluster ${{ secrets.PROJECT_NAME }}-cluster --service ${{ secrets.PROJECT_NAME }}-frontend-service --task-definition ${{ secrets.PROJECT_NAME }}-frontend --force-new-deployment
 
+      - name: Initial wait for frontend service
+        run: |
+          echo "Waiting for frontend service to start deploying..."
+          sleep 30
+
       - name: Wait for frontend service to be stable
         run: |
           aws ecs wait services-stable --cluster ${{ secrets.PROJECT_NAME }}-cluster --services ${{ secrets.PROJECT_NAME }}-frontend-service
 
+          # Additional wait for container initialization
+          echo "Waiting additional time for container initialization..."
+          sleep 60
+
       - name: Verify frontend deployment
         run: |
           HEALTH_CHECK_URL="https://front.${{ secrets.DOMAIN_NAME }}"
-          MAX_RETRIES=10
+          MAX_RETRIES=15
           RETRY_INTERVAL=30
 
           for i in $(seq 1 $MAX_RETRIES); do
-            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL)
+            echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+
             if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
-              echo "Deployment successful. Health check passed."
+              echo "Frontend health check passed!"
               exit 0
             else
-              echo "Attempt $i: Health check returned status $HEALTH_CHECK_RESPONSE. Retrying in $RETRY_INTERVAL seconds..."
+              echo "Got response code: $HEALTH_CHECK_RESPONSE"
+            fi
+
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
               sleep $RETRY_INTERVAL
+            else
+              echo "Frontend health check failed after $MAX_RETRIES attempts"
+              exit 1
             fi
           done
-
-          echo "Deployment may have failed. Health check did not pass after $MAX_RETRIES attempts."
-          exit 1
 
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
