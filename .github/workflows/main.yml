@@ -133,7 +133,7 @@ jobs:
         if: env.SKIP_API_TESTS == 'false'
         run: |
           cd api/src
-          composer install --no-interaction --prefer-dist
+          composer update --no-interaction --prefer-dist  # ここでinstallではなくupdateを実行
 
       - name: Create and Debug .env file
         if: env.SKIP_API_TESTS == 'false'
