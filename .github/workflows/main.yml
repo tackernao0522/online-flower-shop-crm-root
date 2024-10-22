@@ -27,6 +27,10 @@ jobs:
           docker-compose down -v
           docker system prune -a -f
 
+      - name: Setup Git
+        run: |
+          git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
+
       - name: Update submodules
         run: |
           git submodule sync
