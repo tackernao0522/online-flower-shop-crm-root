@@ -17,15 +17,15 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 2
 
-      # - name: Install docker-compose
-      #   run: |
-      #     sudo curl -L "https://github.com/docker/compose/releases/download/v2.3.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-      #     sudo chmod +x /usr/local/bin/docker-compose
+      - name: Install docker-compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.3.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
 
-      # - name: Clean up Docker system
-      #   run: |
-      #     docker-compose down -v  # コンテナとボリュームの削除
-      #     docker system prune -a -f  # イメージ、ネットワーク、ボリュームをクリーンアップ
+      - name: Clean up Docker system
+        run: |
+          docker-compose down -v  # コンテナとボリュームの削除
+          docker system prune -a -f  # イメージ、ネットワーク、ボリュームをクリーンアップ
 
       - name: Setup Git
         run: |
