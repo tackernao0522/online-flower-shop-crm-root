@@ -36,37 +36,37 @@ jobs:
           git submodule sync
           git submodule update --init --recursive
 
-      # - name: Check for API changes
-      #   id: check_api_changes
-      #   run: |
-      #     if git rev-parse HEAD^ >/dev/null 2>&1; then
-      #       if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
-      #         echo "No changes in API. Skipping API tests."
-      #         echo "SKIP_API_TESTS=true" >> $GITHUB_ENV
-      #       else
-      #         echo "Changes detected in API. Will run API tests."
-      #         echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
-      #       fi
-      #     else
-      #       echo "First commit or shallow clone. Running API tests."
-      #       echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
-      #     fi
+      - name: Check for API changes
+        id: check_api_changes
+        run: |
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
+              echo "No changes in API. Skipping API tests."
+              echo "SKIP_API_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "Changes detected in API. Will run API tests."
+              echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
+            fi
+          else
+            echo "First commit or shallow clone. Running API tests."
+            echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
+          fi
 
-      # - name: Check for Frontend changes
-      #   id: check_frontend_changes
-      #   run: |
-      #     if git rev-parse HEAD^ >/dev/null 2>&1; then
-      #       if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
-      #         echo "No changes in Frontend. Skipping Frontend tests."
-      #         echo "SKIP_FRONTEND_TESTS=true" >> $GITHUB_ENV
-      #       else
-      #         echo "Changes detected in Frontend. Will run Frontend tests."
-      #         echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
-      #       fi
-      #     else
-      #       echo "First commit or shallow clone. Running Frontend tests."
-      #       echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
-      #     fi
+      - name: Check for Frontend changes
+        id: check_frontend_changes
+        run: |
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
+              echo "No changes in Frontend. Skipping Frontend tests."
+              echo "SKIP_FRONTEND_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "Changes detected in Frontend. Will run Frontend tests."
+              echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
+            fi
+          else
+            echo "First commit or shallow clone. Running Frontend tests."
+            echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
+          fi
 
       - name: Install Required Packages
         if: env.SKIP_API_TESTS == 'false'
@@ -144,6 +144,12 @@ jobs:
           sed -i "s#DB_DATABASE=.*#DB_DATABASE=${{ secrets.CI_MYSQL_DATABASE }}#" .env
           sed -i "s#DB_USERNAME=.*#DB_USERNAME=${{ secrets.CI_MYSQL_USER }}#" .env
           sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${{ secrets.CI_MYSQL_PASSWORD }}#" .env
+          sed -i "s#PUSHER_APP_ID=.*#PUSHER_APP_ID=null#" .env
+          sed -i "s#PUSHER_APP_KEY=.*#PUSHER_APP_KEY=null#" .env
+          sed -i "s#PUSHER_APP_SECRET=.*#PUSHER_APP_SECRET=null#" .env
+          sed -i "s#PUSHER_APP_CLUSTER=.*#PUSHER_APP_CLUSTER=null#" .env
+          sed -i "s#BROADCAST_DRIVER=.*#BROADCAST_DRIVER=log#" .env
+          sed -i "s#LARAVEL_WEBSOCKETS_ENABLED=.*#LARAVEL_WEBSOCKETS_ENABLED=false#" .env
           php artisan key:generate
           php artisan jwt:secret
           echo "Contents of .env file:"
