@@ -17,14 +17,19 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 2
 
-      - name: Setup Git
+      - name: Install docker-compose
         run: |
-          git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.3.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
 
       - name: Clean up Docker system
         run: |
           docker-compose down -v  # コンテナとボリュームの削除
           docker system prune -a -f  # イメージ、ネットワーク、ボリュームをクリーンアップ
+
+      - name: Setup Git
+        run: |
+          git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
 
       - name: Update submodules
         run: |
@@ -67,7 +72,7 @@ jobs:
         if: env.SKIP_API_TESTS == 'false'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mysql-server mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+          sudo apt-get install -y mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
 
       - name: Install Composer
         if: env.SKIP_API_TESTS == 'false'
@@ -83,38 +88,38 @@ jobs:
           echo "CI_MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}"
           echo "CI_MYSQL_ROOT_PASSWORD: ${{ secrets.CI_MYSQL_ROOT_PASSWORD }}"
 
-      - name: Configure MySQL
+      - name: Start MySQL Container
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          sudo systemctl start mysql --no-pager
+          docker run -d --name mysql-container -e MYSQL_ROOT_PASSWORD=${{ secrets.CI_MYSQL_ROOT_PASSWORD }} -e MYSQL_DATABASE=${{ secrets.CI_MYSQL_DATABASE }} -e MYSQL_USER=${{ secrets.CI_MYSQL_USER }} -e MYSQL_PASSWORD=${{ secrets.CI_MYSQL_PASSWORD }} -p 3306:3306 mysql:8.0
 
-          # MySQLサービスの起動確認
-          until sudo mysqladmin ping -h localhost --silent; do
-              echo "Waiting for MySQL to start..."
+      - name: Wait for MySQL to be ready
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          until docker exec mysql-container mysqladmin ping -h localhost --silent; do
+              echo "Waiting for MySQL to be ready..."
               sleep 5
           done
 
-          # MySQLユーザーとデータベースの設定
-          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${{ secrets.CI_MYSQL_ROOT_PASSWORD }}';"
-          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.CI_MYSQL_DATABASE }};"
-          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.CI_MYSQL_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.CI_MYSQL_PASSWORD }}';"
-          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.CI_MYSQL_DATABASE }}.* TO '${{ secrets.CI_MYSQL_USER }}'@'localhost';"
-          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "FLUSH PRIVILEGES;"
+      - name: Configure MySQL
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${{ secrets.CI_MYSQL_ROOT_PASSWORD }}';"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.CI_MYSQL_DATABASE }};"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.CI_MYSQL_USER }}'@'localhost' IDENTIFIED BY '${{ secrets.CI_MYSQL_PASSWORD }}';"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.CI_MYSQL_DATABASE }}.* TO '${{ secrets.CI_MYSQL_USER }}'@'localhost';"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "FLUSH PRIVILEGES;"
+
+      - name: Check MySQL Logs
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          docker logs mysql-container
 
       - name: Check MySQL Service
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          sudo systemctl status mysql --no-pager
-          mysql --version
-          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "SHOW DATABASES;"
-          sudo mysql -u ${{ secrets.CI_MYSQL_USER }} -p"${{ secrets.CI_MYSQL_PASSWORD }}" -e "SHOW DATABASES;"
-
-      - name: Restart MySQL Service if Needed
-        if: env.SKIP_API_TESTS == 'false'
-        run: |
-          if ! sudo systemctl is-active --quiet mysql; then
-            sudo systemctl restart mysql
-          fi
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "SHOW DATABASES;"
+          docker exec mysql-container mysql -u ${{ secrets.CI_MYSQL_USER }} -p"${{ secrets.CI_MYSQL_PASSWORD }}" -e "SHOW DATABASES;"
 
       - name: Cache Composer packages
         uses: actions/cache@v3
@@ -139,12 +144,6 @@ jobs:
           sed -i "s#DB_DATABASE=.*#DB_DATABASE=${{ secrets.CI_MYSQL_DATABASE }}#" .env
           sed -i "s#DB_USERNAME=.*#DB_USERNAME=${{ secrets.CI_MYSQL_USER }}#" .env
           sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${{ secrets.CI_MYSQL_PASSWORD }}#" .env
-          sed -i "s#PUSHER_APP_ID=.*#PUSHER_APP_ID=null#" .env
-          sed -i "s#PUSHER_APP_KEY=.*#PUSHER_APP_KEY=null#" .env
-          sed -i "s#PUSHER_APP_SECRET=.*#PUSHER_APP_SECRET=null#" .env
-          sed -i "s#PUSHER_APP_CLUSTER=.*#PUSHER_APP_CLUSTER=null#" .env
-          sed -i "s#BROADCAST_DRIVER=.*#BROADCAST_DRIVER=log#" .env
-          sed -i "s#LARAVEL_WEBSOCKETS_ENABLED=.*#LARAVEL_WEBSOCKETS_ENABLED=false#" .env
           php artisan key:generate
           php artisan jwt:secret
           echo "Contents of .env file:"
@@ -166,9 +165,9 @@ jobs:
           echo "CI_MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}"
           echo "CI_MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}"
           echo "MySQL Version:"
-          mysql -h127.0.0.1 -u"${{ secrets.CI_MYSQL_USER }}" -p"${{ secrets.CI_MYSQL_PASSWORD }}" -e "SELECT VERSION();" || echo "Failed to connect with user"
+          docker exec mysql-container mysql -u"${{ secrets.CI_MYSQL_USER }}" -p"${{ secrets.CI_MYSQL_PASSWORD }}" -e "SELECT VERSION();" || echo "Failed to connect with user"
           echo "MySQL Users:"
-          sudo mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "SELECT user, host FROM mysql.user;"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "SELECT user, host FROM mysql.user;"
           echo "Database connection details:"
           php artisan tinker --execute="print_r(config('database.connections.mysql'));"
           echo "Attempting connection:"
