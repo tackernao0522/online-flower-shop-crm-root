@@ -106,8 +106,8 @@ jobs:
       - name: Cache Composer packages
         uses: actions/cache@v3
         with:
-          path: api/src/vendor
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          path: ${{ github.workspace }}/api/src/vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('api/src/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
       - name: Install Composer Dependencies
@@ -180,8 +180,8 @@ jobs:
       - name: Cache Node.js modules
         uses: actions/cache@v3
         with:
-          path: front/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          path: ${{ github.workspace }}/front/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('front/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
 
       - name: Install Node.js dependencies
