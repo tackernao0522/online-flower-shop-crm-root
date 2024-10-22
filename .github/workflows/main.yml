@@ -106,20 +106,20 @@ jobs:
       - name: Cache Composer packages
         uses: actions/cache@v3
         with:
-          path: ~/project/api/src/vendor
+          path: api/src/vendor
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
       - name: Install Composer Dependencies
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          cd ~/project/api/src
+          cd api/src
           composer install --no-interaction --prefer-dist
 
       - name: Create and Debug .env file
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          cd ~/project/api/src
+          cd api/src
           cp .env.example .env
           sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
           sed -i "s#DB_DATABASE=.*#DB_DATABASE=${{ secrets.CI_MYSQL_DATABASE }}#" .env
@@ -139,14 +139,14 @@ jobs:
       - name: Clear Config Cache
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          cd ~/project/api/src
+          cd api/src
           php artisan config:clear
           php artisan cache:clear
 
       - name: Debug Database Connection
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          cd ~/project/api/src
+          cd api/src
           echo "Environment variables:"
           echo "CI_MYSQL_DATABASE: ${{ secrets.CI_MYSQL_DATABASE }}"
           echo "CI_MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}"
@@ -163,13 +163,13 @@ jobs:
       - name: Run database migrations and seed
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          cd ~/project/api/src
+          cd api/src
           php artisan migrate --force --seed
 
       - name: Run Laravel tests
         if: env.SKIP_API_TESTS == 'false'
         run: |
-          cd ~/project/api/src
+          cd api/src
           php artisan test
 
       - name: Set up Node.js
@@ -180,18 +180,18 @@ jobs:
       - name: Cache Node.js modules
         uses: actions/cache@v3
         with:
-          path: ~/project/front/node_modules
+          path: front/node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-
 
       - name: Install Node.js dependencies
         if: env.SKIP_FRONTEND_TESTS == 'false'
-        working-directory: ~/project/front
+        working-directory: front
         run: npm install
 
       - name: Run frontend tests
         if: env.SKIP_FRONTEND_TESTS == 'false'
-        working-directory: ~/project/front
+        working-directory: front
         run: npm test
 
       - name: Slack Notification
@@ -200,6 +200,8 @@ jobs:
         with:
           status: ${{ job.status }}
           fields: repo,message,commit,author,action,eventName,ref,workflow
+          mention: here
+          if_mention: failure,cancelled
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
