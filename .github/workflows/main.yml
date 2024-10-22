@@ -15,6 +15,7 @@ jobs:
         with:
           submodules: false
           token: ${{ secrets.GH_PAT }}
+          fetch-depth: 2
 
       - name: Setup Git
         run: |
@@ -28,22 +29,32 @@ jobs:
       - name: Check for API changes
         id: check_api_changes
         run: |
-          if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
-            echo "No changes in API. Skipping API tests."
-            echo "SKIP_API_TESTS=true" >> $GITHUB_ENV
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
+              echo "No changes in API. Skipping API tests."
+              echo "SKIP_API_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "Changes detected in API. Will run API tests."
+              echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
+            fi
           else
-            echo "Changes detected in API. Will run API tests."
+            echo "First commit or shallow clone. Running API tests."
             echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
           fi
 
       - name: Check for Frontend changes
         id: check_frontend_changes
         run: |
-          if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
-            echo "No changes in Frontend. Skipping Frontend tests."
-            echo "SKIP_FRONTEND_TESTS=true" >> $GITHUB_ENV
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
+              echo "No changes in Frontend. Skipping Frontend tests."
+              echo "SKIP_FRONTEND_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "Changes detected in Frontend. Will run Frontend tests."
+              echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
+            fi
           else
-            echo "Changes detected in Frontend. Will run Frontend tests."
+            echo "First commit or shallow clone. Running Frontend tests."
             echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
           fi
 
