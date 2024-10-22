@@ -98,7 +98,7 @@ jobs:
         run: |
           until docker exec mysql-container mysqladmin ping --silent; do
               echo "Waiting for MySQL to be ready..."
-              sleep 5
+              sleep 10
           done
 
       - name: Configure MySQL
