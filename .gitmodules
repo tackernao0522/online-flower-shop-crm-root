@@ -1,6 +1,6 @@
 [submodule "api"]
-	path = api
+    path = api
 	url = git@github.com:tackernao0522/online-flower-shop-crm-api.git
 [submodule "front"]
-	path = front
+    path = front
 	url = git@github.com:tackernao0522/online-flower-shop-crm-front.git
