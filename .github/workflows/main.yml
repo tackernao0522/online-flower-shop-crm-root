@@ -225,3 +225,319 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  build-and-push-image:
+    needs: build-and-test
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: false
+          token: ${{ secrets.GH_PAT }}
+      - name: Setup Git
+        run: |
+          git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
+      - name: Update submodules
+        run: |
+          git submodule sync
+          git submodule update --init --recursive
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      - name: Get RDS endpoint and prepare .env.production
+        run: |
+          DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ofcrm-mysql --query "DBInstances[0].Endpoint.Address" --output text)
+          cd ./api/src
+          echo "APP_NAME=OFCRM" > .env.production
+          echo "APP_ENV=production" >> .env.production
+          echo "APP_KEY=${{ secrets.APP_KEY }}" >> .env.production
+          echo "APP_DEBUG=true" >> .env.production
+          echo "LOG_CHANNEL=stack" >> .env.production
+          echo "APP_URL=https://api.tkb-tech.com" >> .env.production
+          echo "LOG_LEVEL=debug" >> .env.production
+          echo "DB_CONNECTION=mysql" >> .env.production
+          echo "DB_HOST=${DB_HOST}" >> .env.production
+          echo "DB_PORT=3306" >> .env.production
+          echo "DB_DATABASE=flowercrm_production" >> .env.production
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env.production
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env.production
+          echo "BROADCAST_DRIVER=pusher" >> .env.production
+          echo "PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}" >> .env.production
+          echo "PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
+          echo "PUSHER_APP_SECRET=${{ secrets.PUSHER_APP_SECRET }}" >> .env.production
+          echo "PUSHER_HOST=api.tkb-tech.com" >> .env.production
+          echo "PUSHER_PORT=443" >> .env.production
+          echo "PUSHER_SCHEME=https" >> .env.production
+          echo "PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_ENABLED=true" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_PORT=6001" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_SSL_LOCAL_CERT=" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_SSL_LOCAL_PK=" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_SSL_PASSPHRASE=" >> .env.production
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.production
+          echo "JWT_ALGO=${{ secrets.JWT_ALGO }}" >> .env.production
+          echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ofcrm-backend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg AWS_REGION=${{ secrets.AWS_REGION }} \
+            --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
+            --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
+            --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
+            --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -f ./api/infra/php/Dockerfile.prod \
+            ./api
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      - name: Update ECS task definition
+        run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query taskDefinition)
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
+            family: .family,
+            taskRoleArn: .taskRoleArn,
+            executionRoleArn: .executionRoleArn,
+            networkMode: .networkMode,
+            containerDefinitions: [
+              .containerDefinitions[0] |
+              .image = "${{ steps.login-ecr.outputs.registry }}/ofcrm-backend:${{ github.sha }}" |
+              .portMappings = [
+                {
+                  "containerPort": 80,
+                  "hostPort": 80,
+                  "protocol": "tcp"
+                },
+                {
+                  "containerPort": 6001,
+                  "hostPort": 6001,
+                  "protocol": "tcp"
+                }
+              ]
+            ],
+            volumes: .volumes,
+            placementConstraints: .placementConstraints,
+            requiresCompatibilities: .requiresCompatibilities,
+            cpu: .cpu,
+            memory: .memory
+          }')
+          NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
+          NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+          echo "New task definition revision: $NEW_REVISION"
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  deploy-to-ecs:
+    needs: build-and-push-image
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Deploy to ECS
+        run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster ofcrm-cluster --service ofcrm-backend-service --task-definition $TASK_DEFINITION --force-new-deployment
+      - name: Initial wait for service stability
+        run: |
+          echo "Waiting for ECS service to start deploying..."
+          sleep 30  # 初期待機時間を設定
+      - name: Wait for service to be stable
+        run: |
+          echo "Waiting for ECS service to be stable..."
+          aws ecs wait services-stable --cluster ofcrm-cluster --services ofcrm-backend-service
+          # 追加の待機時間（コンテナの初期化用）
+          echo "Waiting additional time for container initialization..."
+          sleep 60
+      - name: Verify deployment
+        run: |
+          HEALTH_CHECK_URL="https://api.tkb-tech.com/health"
+          MAX_RETRIES=20
+          RETRY_INTERVAL=30
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+            if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+              echo "Health check passed!"
+              break
+            elif [ "$HEALTH_CHECK_RESPONSE" = "503" ]; then
+              echo "Service temporarily unavailable. Retrying..."
+            else
+              echo "Got response code: $HEALTH_CHECK_RESPONSE"
+            fi
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
+              sleep $RETRY_INTERVAL
+            else
+              echo "Health check failed after $MAX_RETRIES attempts"
+              exit 1
+            fi
+          done
+      - name: Verify WebSocket
+        if: success()
+        continue-on-error: true
+        run: |
+          echo "Testing WebSocket endpoints..."
+          # WebSocket接続テスト
+          WS_CHECK_URL="https://api.tkb-tech.com/app/test"
+          echo "Testing WebSocket endpoint: $WS_CHECK_URL"
+          WS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Connection: upgrade" \
+            -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Version: 13" \
+            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+            $WS_CHECK_URL || echo "failed")
+          if [ "$WS_RESPONSE" = "101" ] || [ "$WS_RESPONSE" = "400" ]; then
+            echo "WebSocket endpoint is accessible"
+          else
+            echo "WebSocket check returned: $WS_RESPONSE (This is not failing the deployment)"
+          fi
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  build-and-push-frontend-image:
+    needs: build-and-test
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: false
+          token: ${{ secrets.GH_PAT }}
+      - name: Setup Git
+        run: |
+          git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
+      - name: Update submodules
+        run: |
+          git submodule sync
+          git submodule update --init --recursive
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      - name: Create .env.production file
+        run: |
+          cd front
+          echo "NEXT_PUBLIC_APP_ENV=production" > .env.production
+          echo "NEXT_PUBLIC_API_URL=https://api.${{ secrets.DOMAIN_NAME }}" >> .env.production
+          echo "NEXT_PUBLIC_PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
+          echo "NEXT_PUBLIC_PUSHER_HOST=api.${{ secrets.DOMAIN_NAME }}" >> .env.production
+          echo "NEXT_PUBLIC_PUSHER_PORT=443" >> .env.production
+          echo "NEXT_PUBLIC_PUSHER_SCHEME=https" >> .env.production
+          echo "NEXT_PUBLIC_WEBSOCKET_HOST=api.${{ secrets.DOMAIN_NAME }}" >> .env.production
+          echo "NEXT_PUBLIC_WEBSOCKET_PORT=443" >> .env.production
+          echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
+      - name: Build and push frontend Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.PROJECT_NAME }}-frontend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd front
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile.prod .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      - name: Update ECS task definition for frontend
+        run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.PROJECT_NAME }}-frontend)
+          NEW_CONTAINER_DEFINITIONS=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ steps.login-ecr.outputs.registry }}/${{ secrets.PROJECT_NAME }}-frontend:${{ github.sha }}" '.taskDefinition.containerDefinitions | map(if .name == "'${{ secrets.PROJECT_NAME }}-frontend'" then .image = $IMAGE else . end)')
+          aws ecs register-task-definition \
+            --family ${{ secrets.PROJECT_NAME }}-frontend \
+            --container-definitions "$NEW_CONTAINER_DEFINITIONS" \
+            --task-role-arn "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.taskRoleArn')" \
+            --execution-role-arn "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.executionRoleArn')" \
+            --network-mode "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.networkMode')" \
+            --requires-compatibilities "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.requiresCompatibilities[]')" \
+            --cpu "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.cpu')" \
+            --memory "$(echo $TASK_DEFINITION | jq -r '.taskDefinition.memory')"
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  deploy-frontend:
+    needs: build-and-push-frontend-image
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Deploy frontend to ECS
+        run: |
+          aws ecs update-service --cluster ${{ secrets.PROJECT_NAME }}-cluster --service ${{ secrets.PROJECT_NAME }}-frontend-service --task-definition ${{ secrets.PROJECT_NAME }}-frontend --force-new-deployment
+      - name: Initial wait for frontend service
+        run: |
+          echo "Waiting for frontend service to start deploying..."
+          sleep 30
+      - name: Wait for frontend service to be stable
+        run: |
+          aws ecs wait services-stable --cluster ${{ secrets.PROJECT_NAME }}-cluster --services ${{ secrets.PROJECT_NAME }}-frontend-service
+          # Additional wait for container initialization
+          echo "Waiting additional time for container initialization..."
+          sleep 60
+      - name: Verify frontend deployment
+        run: |
+          HEALTH_CHECK_URL="https://front.${{ secrets.DOMAIN_NAME }}"
+          MAX_RETRIES=15
+          RETRY_INTERVAL=30
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+            if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+              echo "Frontend health check passed!"
+              exit 0
+            else
+              echo "Got response code: $HEALTH_CHECK_RESPONSE"
+            fi
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
+              sleep $RETRY_INTERVAL
+            else
+              echo "Frontend health check failed after $MAX_RETRIES attempts"
+              exit 1
+            fi
+          done
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
