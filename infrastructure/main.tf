@@ -413,12 +413,12 @@ resource "aws_lb_target_group" "websocket" {
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    interval            = 30
+    interval            = 60
     matcher             = "200"
     path                = "/health"
-    protocol           = "HTTP"
-    timeout            = 10
-    unhealthy_threshold = 3
+    protocol            = "HTTP"
+    timeout             = 30
+    unhealthy_threshold = 5
   }
 
   stickiness {
@@ -457,6 +457,7 @@ resource "aws_lb_listener_rule" "websocket" {
 }
 
 # Backend ECS Task Definition
+# Backend ECS Task Definition
 resource "aws_ecs_task_definition" "backend" {
   family                   = "${var.project_name}-backend"
   network_mode             = "awsvpc"
@@ -480,19 +481,30 @@ resource "aws_ecs_task_definition" "backend" {
         protocol      = "tcp"
       }
     ]
+    healthCheck = {
+      command     = ["CMD-SHELL", "php artisan health || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
     environment = [
       { name = "APP_ENV", value = "production" },
-      { name = "APP_DEBUG", value = "true" },
+      { name = "APP_DEBUG", value = "false" },           # デバッグを無効化
       { name = "APP_KEY", value = var.app_key },
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
       { name = "LOG_CHANNEL", value = "stack" },
-      { name = "LOG_LEVEL", value = "debug" },
-      { name = "PUSHER_DEBUG", value = "true" },
-      { name = "LARAVEL_WEBSOCKETS_DEBUG", value = "true" },
+      { name = "LOG_LEVEL", value = "error" },           # ログレベルを error に変更
+      { name = "PUSHER_DEBUG", value = "false" },        # Pusherデバッグを無効化
+      { name = "LARAVEL_WEBSOCKETS_DEBUG", value = "false" }, # WebSocketデバッグを無効化
       { name = "DB_HOST", value = aws_db_instance.mysql.address },
       { name = "DB_DATABASE", value = var.db_name },
       { name = "DB_USERNAME", value = var.db_username },
       { name = "DB_PASSWORD", value = var.db_password },
+      { name = "DB_CONNECTION_RETRIES", value = "5" },
+      { name = "DB_CONNECTION_RETRY_DELAY", value = "5" },
+      { name = "WAIT_HOSTS", value = "${aws_db_instance.mysql.address}:3306" },
+      { name = "WAIT_HOSTS_TIMEOUT", value = "300" },
       { name = "FRONTEND_URL", value = "https://front.${var.domain_name}" },
       { name = "BROADCAST_DRIVER", value = "pusher" },
       { name = "PUSHER_APP_ID", value = var.pusher_app_id },
@@ -505,10 +517,17 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" },
       { name = "LARAVEL_WEBSOCKETS_PORT", value = "6001" },
       { name = "LARAVEL_WEBSOCKETS_HOST", value = "0.0.0.0" },
-      { name = "LARAVEL_WEBSOCKETS_SSL_LOCAL_CERT", value = "" },
-      { name = "LARAVEL_WEBSOCKETS_SSL_LOCAL_PK", value = "" },
-      { name = "LARAVEL_WEBSOCKETS_SSL_PASSPHRASE", value = "" },
-      { name = "PUSHER_DEBUG", value = "true" }
+      { name = "LARAVEL_WEBSOCKETS_SCHEME", value = "https" }, # HTTPS設定を追加
+      # キャッシュ関連の設定を追加
+      { name = "CACHE_DRIVER", value = "file" },
+      { name = "SESSION_DRIVER", value = "file" },
+      { name = "QUEUE_CONNECTION", value = "sync" },
+      # PHP-FPM設定
+      { name = "PHP_FPM_PM", value = "dynamic" },
+      { name = "PHP_FPM_PM_MAX_CHILDREN", value = "5" },
+      { name = "PHP_FPM_PM_START_SERVERS", value = "2" },
+      { name = "PHP_FPM_PM_MIN_SPARE_SERVERS", value = "1" },
+      { name = "PHP_FPM_PM_MAX_SPARE_SERVERS", value = "3" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -536,6 +555,14 @@ resource "aws_ecs_service" "backend" {
   launch_type     = "FARGATE"
 
   enable_execute_command = true
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 50
 
   network_configuration {
     subnets         = aws_subnet.private[*].id
@@ -705,12 +732,12 @@ resource "aws_lb_target_group" "backend" {
 
   health_check {
     healthy_threshold   = "2"
-    interval            = "30"
-    protocol            = "HTTP"
-    matcher             = "200"
-    timeout             = "5"
-    path                = "/health"
-    unhealthy_threshold = "3"
+    interval           = "60"
+    protocol           = "HTTP"
+    matcher            = "200"
+    timeout            = "30"
+    path               = "/health"
+    unhealthy_threshold = "5"
   }
 }
 
