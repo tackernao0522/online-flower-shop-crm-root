@@ -276,7 +276,6 @@ jobs:
           echo "PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}" >> .env.production
           echo "PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
           echo "PUSHER_APP_SECRET=${{ secrets.PUSHER_APP_SECRET }}" >> .env.production
-          echo "PUSHER_HOST=api.tkb-tech.com" >> .env.production
           echo "PUSHER_PORT=443" >> .env.production
           echo "PUSHER_SCHEME=https" >> .env.production
           echo "PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
@@ -469,7 +468,6 @@ jobs:
           echo "NEXT_PUBLIC_APP_ENV=production" > .env.production
           echo "NEXT_PUBLIC_API_URL=https://api.${{ secrets.DOMAIN_NAME }}" >> .env.production
           echo "NEXT_PUBLIC_PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
-          echo "NEXT_PUBLIC_PUSHER_HOST=api.${{ secrets.DOMAIN_NAME }}" >> .env.production
           echo "NEXT_PUBLIC_PUSHER_PORT=443" >> .env.production
           echo "NEXT_PUBLIC_PUSHER_SCHEME=https" >> .env.production
           echo "NEXT_PUBLIC_WEBSOCKET_HOST=api.${{ secrets.DOMAIN_NAME }}" >> .env.production
