@@ -260,7 +260,7 @@ jobs:
           echo "APP_KEY=${{ secrets.APP_KEY }}" >> .env.production
           echo "APP_DEBUG=false" >> .env.production
           echo "LOG_CHANNEL=stack" >> .env.production
-          echo "APP_URL=https://api.${var.domain_name}" >> .env.production
+          echo "APP_URL=https://api.tkb-tech.com" >> .env.production
           echo "LOG_LEVEL=error" >> .env.production
 
           # データベース設定
@@ -276,7 +276,7 @@ jobs:
           echo "PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}" >> .env.production
           echo "PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
           echo "PUSHER_APP_SECRET=${{ secrets.PUSHER_APP_SECRET }}" >> .env.production
-          echo "PUSHER_HOST=api.${var.domain_name}" >> .env.production
+          echo "PUSHER_HOST=api.tkb-tech.com" >> .env.production
           echo "PUSHER_PORT=443" >> .env.production
           echo "PUSHER_SCHEME=https" >> .env.production
           echo "PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
@@ -302,7 +302,7 @@ jobs:
           echo "JWT_ALGO=${{ secrets.JWT_ALGO }}" >> .env.production
 
           # その他の設定
-          echo "FRONTEND_URL=https://front.${var.domain_name}" >> .env.production
+          echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
