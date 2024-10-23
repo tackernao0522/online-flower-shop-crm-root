@@ -682,6 +682,21 @@ resource "aws_security_group" "ecs_tasks" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  ingress {
+    description = "Allow internal WebSocket"
+    from_port   = 6001
+    to_port     = 6001
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "Allow internal HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    self        = true
+  }
 
   # 全てのアウトバウンドトラフィックを許可
   egress {
@@ -706,6 +721,14 @@ resource "aws_security_group" "vpc_endpoints" {
     description = "Allow HTTPS from VPC"
     from_port   = 443
     to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
+    description = "Allow WebSocket from VPC"
+    from_port   = 6001
+    to_port     = 6001
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
   }
