@@ -39,6 +39,24 @@ resource "aws_subnet" "private" {
   }
 }
 
+# Elastic IP (NAT Gatewayに割り当てるIPアドレス)
+resource "aws_eip" "nat" {
+  domain = "vpc"
+  tags = {
+    Name = "${var.project_name}-nat-eip"
+  }
+}
+
+# NAT Gateway
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public[0].id
+
+  tags = {
+    Name = "${var.project_name}-nat-gateway"
+  }
+}
+
 # インターネットゲートウェイ
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
@@ -77,6 +95,14 @@ resource "aws_route_table" "private" {
   tags = {
     Name = "${var.project_name}-private-rt-${count.index + 1}"
   }
+}
+
+# プライベートルートテーブルにNAT Gateway経由のデフォルトルートを追加
+resource "aws_route" "private_nat" {
+  count          = 2
+  route_table_id = aws_route_table.private[count.index].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id = aws_nat_gateway.main.id
 }
 
 # プライベートサブネットとルートテーブルの関連付け
