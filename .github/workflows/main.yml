@@ -154,14 +154,12 @@ jobs:
           php artisan jwt:secret
           echo "Contents of .env file:"
           cat .env
-
       - name: Clear Config Cache
         if: env.SKIP_API_TESTS == 'false'
         run: |
           cd api/src
           php artisan config:clear
           php artisan cache:clear
-
       - name: Debug Database Connection
         if: env.SKIP_API_TESTS == 'false'
         run: |
@@ -319,7 +317,6 @@ jobs:
 
           # その他の設定
           echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
-
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -336,7 +333,6 @@ jobs:
             -f ./api/infra/php/Dockerfile.prod \
             ./api
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
       - name: Update ECS task definition
         run: |
           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query taskDefinition)
@@ -370,7 +366,6 @@ jobs:
           NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
           NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
           echo "New task definition revision: $NEW_REVISION"
-
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
         if: always()
@@ -380,7 +375,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
   deploy-to-ecs:
     needs: build-and-push-image
     runs-on: ubuntu-22.04
@@ -391,17 +385,14 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Deploy to ECS
         run: |
           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query 'taskDefinition.taskDefinitionArn' --output text)
           aws ecs update-service --cluster ofcrm-cluster --service ofcrm-backend-service --task-definition $TASK_DEFINITION --force-new-deployment
-
       - name: Initial wait for service stability
         run: |
           echo "Waiting for ECS service to start deploying..."
           sleep 30  # 初期待機時間を設定
-
       - name: Wait for service to be stable
         run: |
           echo "Waiting for ECS service to be stable..."
@@ -409,7 +400,6 @@ jobs:
           # 追加の待機時間（コンテナの初期化用）
           echo "Waiting additional time for container initialization..."
           sleep 60
-
       - name: Verify deployment
         run: |
           HEALTH_CHECK_URL="https://api.tkb-tech.com/health"
@@ -434,7 +424,6 @@ jobs:
               exit 1
             fi
           done
-
       - name: Verify WebSocket
         if: success()
         continue-on-error: true
@@ -454,7 +443,6 @@ jobs:
           else
             echo "WebSocket check returned: $WS_RESPONSE (This is not failing the deployment)"
           fi
-
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
         if: always()
