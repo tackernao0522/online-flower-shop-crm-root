@@ -55,6 +55,8 @@ resource "aws_nat_gateway" "main" {
   tags = {
     Name = "${var.project_name}-nat-gateway"
   }
+
+  depends_on = [aws_internet_gateway.main]
 }
 
 # インターネットゲートウェイ
@@ -251,7 +253,6 @@ resource "aws_security_group" "alb" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
 
   egress {
     from_port   = 0
@@ -483,7 +484,6 @@ resource "aws_lb_listener_rule" "websocket" {
 }
 
 # Backend ECS Task Definition
-# Backend ECS Task Definition
 resource "aws_ecs_task_definition" "backend" {
   family                   = "${var.project_name}-backend"
   network_mode             = "awsvpc"
@@ -516,7 +516,7 @@ resource "aws_ecs_task_definition" "backend" {
     }
     environment = [
       { name = "APP_ENV", value = "production" },
-      { name = "APP_DEBUG", value = "false" },           # デバッグを無効化
+      { name = "APP_DEBUG", value = "false" },
       { name = "APP_KEY", value = var.app_key },
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
       { name = "LOG_CHANNEL", value = "stack" },
@@ -543,17 +543,17 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "LARAVEL_WEBSOCKETS_ENABLED", value = "true" },
       { name = "LARAVEL_WEBSOCKETS_PORT", value = "6001" },
       { name = "LARAVEL_WEBSOCKETS_HOST", value = "0.0.0.0" },
-      { name = "LARAVEL_WEBSOCKETS_SCHEME", value = "https" }, # HTTPS設定を追加
-      # キャッシュ関連の設定を追加
+      { name = "LARAVEL_WEBSOCKETS_SCHEME", value = "https" },
       { name = "CACHE_DRIVER", value = "file" },
       { name = "SESSION_DRIVER", value = "file" },
       { name = "QUEUE_CONNECTION", value = "sync" },
-      # PHP-FPM設定
       { name = "PHP_FPM_PM", value = "dynamic" },
       { name = "PHP_FPM_PM_MAX_CHILDREN", value = "5" },
       { name = "PHP_FPM_PM_START_SERVERS", value = "2" },
       { name = "PHP_FPM_PM_MIN_SPARE_SERVERS", value = "1" },
-      { name = "PHP_FPM_PM_MAX_SPARE_SERVERS", value = "3" }
+      { name = "PHP_FPM_PM_MAX_SPARE_SERVERS", value = "3" },
+      { name = "AWS_USE_FIPS_ENDPOINT", value = "true" },
+      { name = "ECS_ENABLE_EXECUTE_COMMAND", value = "true" }
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -561,6 +561,8 @@ resource "aws_ecs_task_definition" "backend" {
         awslogs-group         = "/ecs/${var.project_name}-backend"
         awslogs-region        = var.aws_region
         awslogs-stream-prefix = "ecs"
+        "mode"              = "non-blocking"
+        "max-buffer-size"   = "4m"
       }
     }
   }])
@@ -578,6 +580,7 @@ resource "aws_ecs_service" "backend" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.backend.arn
   desired_count   = 1
+  platform_version = "1.4.0"
   launch_type     = "FARGATE"
 
   enable_execute_command = true
@@ -593,6 +596,7 @@ resource "aws_ecs_service" "backend" {
   network_configuration {
     subnets         = aws_subnet.private[*].id
     security_groups = [aws_security_group.ecs_tasks.id]
+    assign_public_ip = false
   }
 
   load_balancer {
@@ -648,6 +652,25 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_ecr_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+resource "aws_iam_role_policy" "ecs_execution_ssm_policy" {
+  name = "${var.project_name}-ecs-execution-ssm-policy"
+  role = aws_iam_role.ecs_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameters",
+          "ssm:GetParameter"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # ECS Task Role
 resource "aws_iam_role" "ecs_task_role" {
   name = "${var.project_name}-ecs-task-role"
@@ -672,6 +695,28 @@ resource "aws_iam_role_policy_attachment" "ecs_task_role_policy" {
 resource "aws_iam_role_policy_attachment" "ecs_task_execute_api" {
   role       = aws_iam_role.ecs_task_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
+}
+
+resource "aws_iam_role_policy" "ecs_task_ssm_policy" {
+  name = "${var.project_name}-ecs-ssm-policy"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel",
+          "ssm:UpdateInstanceInformation"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 # Security Group for ECS Tasks
@@ -724,7 +769,6 @@ resource "aws_security_group" "ecs_tasks" {
     self        = true
   }
 
-  # 全てのアウトバウンドトラフィックを許可
   egress {
     from_port   = 0
     to_port     = 0
@@ -965,3 +1009,4 @@ output "rds_endpoint" {
   description = "The endpoint of the RDS instance"
   value       = aws_db_instance.mysql.endpoint
 }
+
