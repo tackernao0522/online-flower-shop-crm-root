@@ -365,7 +365,7 @@ jobs:
                   "protocol": "tcp"
                 }
               ]
-            },
+            ],
             volumes: .volumes,
             placementConstraints: .placementConstraints,
             requiresCompatibilities: .requiresCompatibilities,
