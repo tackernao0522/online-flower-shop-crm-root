@@ -276,7 +276,6 @@ jobs:
           echo "PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}" >> .env.production
           echo "PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
           echo "PUSHER_APP_SECRET=${{ secrets.PUSHER_APP_SECRET }}" >> .env.production
-          echo "PUSHER_HOST=${{ secrets.PUSHER_HOST }}" >> .env.production
           echo "PUSHER_PORT=443" >> .env.production
           echo "PUSHER_SCHEME=https" >> .env.production
           echo "PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
