@@ -536,6 +536,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "PUSHER_APP_ID", value = var.pusher_app_id },
       { name = "PUSHER_APP_KEY", value = var.pusher_app_key },
       { name = "PUSHER_APP_SECRET", value = var.pusher_app_secret },
+      { name = "PUSHER_HOST", value = "api.pusherapp.com" },
       { name = "PUSHER_PORT", value = "443" },
       { name = "PUSHER_SCHEME", value = "https" },
       { name = "PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
@@ -809,6 +810,7 @@ resource "aws_ecs_task_definition" "frontend" {
     environment = [
       { name = "NEXT_PUBLIC_API_URL", value = "https://api.${var.domain_name}" },
       { name = "NEXT_PUBLIC_PUSHER_APP_KEY", value = var.pusher_app_key },
+      { name = "NEXT_PUBLIC_PUSHER_HOST", value = "api.pusherapp.com" },
       { name = "NEXT_PUBLIC_PUSHER_PORT", value = "443" },
       { name = "NEXT_PUBLIC_PUSHER_SCHEME", value = "https" },
       { name = "NEXT_PUBLIC_PUSHER_APP_CLUSTER", value = var.pusher_app_cluster }
