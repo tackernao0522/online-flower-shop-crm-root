@@ -243,6 +243,17 @@ jobs:
           git submodule sync
           git submodule update --init --recursive
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
       - name: Install Required Packages
         if: env.SKIP_API_TESTS == 'false'
         run: |
@@ -255,15 +266,11 @@ jobs:
           curl -sS https://getcomposer.org/installer | php
           sudo mv composer.phar /usr/local/bin/composer
 
-      - name: Install Composer Dependencies # ここに追記
+      - name: Install Composer Dependencies
         if: env.SKIP_API_TESTS == 'false'
         run: |
           cd api/src
           composer install --optimize-autoloader
-
-      - name: Start Docker container
-        run: |
-          # Docker container start commands...
 
       - name: Get RDS endpoint and prepare .env.production
         run: |
@@ -317,6 +324,7 @@ jobs:
 
           # その他の設定
           echo "FRONTEND_URL=https://front.tkb-tech.com" >> .env.production
+
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -333,6 +341,7 @@ jobs:
             -f ./api/infra/php/Dockerfile.prod \
             ./api
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
       - name: Update ECS task definition
         run: |
           TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ofcrm-backend --query taskDefinition)
@@ -356,7 +365,7 @@ jobs:
                   "protocol": "tcp"
                 }
               ]
-            ],
+            },
             volumes: .volumes,
             placementConstraints: .placementConstraints,
             requiresCompatibilities: .requiresCompatibilities,
@@ -366,6 +375,7 @@ jobs:
           NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEFINITION")
           NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
           echo "New task definition revision: $NEW_REVISION"
+
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
         if: always()
@@ -375,6 +385,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
   deploy-to-ecs:
     needs: build-and-push-image
     runs-on: ubuntu-22.04
