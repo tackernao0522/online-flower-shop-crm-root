@@ -394,7 +394,13 @@ jobs:
                   "mode": "non-blocking",
                   "max-buffer-size": "4m"
                 }
-              }
+              } |
+              .environment += [
+                {
+                  "name": "RUN_WEBSOCKETS",
+                  "value": "true"
+                }
+              ]
             ],
             requiresCompatibilities: ["FARGATE"],
             cpu: "256",

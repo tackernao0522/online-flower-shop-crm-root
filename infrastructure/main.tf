@@ -451,7 +451,7 @@ resource "aws_lb_target_group" "websocket" {
   stickiness {
     type            = "app_cookie"
     cookie_duration = 86400
-    cookie_name     = "websocket_session"
+    cookie_name     = "websocket_session"  # クッキー名を明示的に指定
     enabled         = true
   }
 
@@ -548,6 +548,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "LARAVEL_WEBSOCKETS_PORT", value = "6001" },
       { name = "LARAVEL_WEBSOCKETS_HOST", value = "0.0.0.0" },
       { name = "LARAVEL_WEBSOCKETS_SCHEME", value = "https" },
+      { name = "RUN_WEBSOCKETS", value = "true" },  # ここに追加
       { name = "CACHE_DRIVER", value = "file" },
       { name = "SESSION_DRIVER", value = "file" },
       { name = "QUEUE_CONNECTION", value = "sync" },
