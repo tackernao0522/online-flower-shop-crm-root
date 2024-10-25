@@ -531,7 +531,7 @@ jobs:
               $WS_CHECK_URL || echo "failed")
             echo "WebSocket response code: $WS_RESPONSE"
 
-            if [ "$WS_RESPONSE" = "101" ] || [ "$WS_RESPONSE" = "400" ]; then
+            if [ "$WS_RESPONSE" = "200" ]; then     # 200を成功とみなす
               echo "WebSocket endpoint is accessible"
               exit 0
             elif [ "$WS_RESPONSE" = "502" ] && [ $i -lt $MAX_RETRIES ]; then
