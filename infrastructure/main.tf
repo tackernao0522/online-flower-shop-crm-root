@@ -441,11 +441,12 @@ resource "aws_lb_target_group" "websocket" {
     enabled             = true
     healthy_threshold   = 2
     interval            = 30
-    matcher             = "200,400,404"
+    matcher             = "200"
     path                = "/health"
     protocol            = "HTTP"
     timeout             = 10
     unhealthy_threshold = 3
+    port                = "6001"
   }
 
   stickiness {
