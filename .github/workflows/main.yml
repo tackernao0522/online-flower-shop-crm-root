@@ -516,29 +516,25 @@ jobs:
 
       - name: Verify WebSocket
         run: |
-          echo "Testing WebSocket endpoints..."
-          WS_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/app/health"
+          echo "Testing WebSocket health..."
+          WS_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/ws-health"
           MAX_RETRIES=5
           RETRY_INTERVAL=30
 
           for i in $(seq 1 $MAX_RETRIES); do
-            echo "Attempt $i: Testing WebSocket endpoint: $WS_CHECK_URL"
-            # WebSocketヘッダーなしで通常のHTTPリクエストとしてチェック
-            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $WS_CHECK_URL || echo "failed")
-            echo "WebSocket health check response: $HEALTH_RESPONSE"
+            echo "Attempt $i: Checking $WS_CHECK_URL"
+            HEALTH_RESPONSE=$(curl -s -I -o /dev/null -w "%{http_code}" $WS_CHECK_URL || echo "failed")
+            echo "Health check response: $HEALTH_RESPONSE"
 
             if [ "$HEALTH_RESPONSE" = "200" ]; then
-              echo "WebSocket health check passed!"
+              echo "WebSocket service health check passed!"
               exit 0
+            elif [ "$HEALTH_RESPONSE" != "200" ] && [ $i -lt $MAX_RETRIES ]; then
+              echo "Waiting for service to initialize..."
+              sleep $RETRY_INTERVAL
             else
-              echo "Got response code: $HEALTH_RESPONSE"
-              if [ $i -lt $MAX_RETRIES ]; then
-                echo "Waiting for service to initialize..."
-                sleep $RETRY_INTERVAL
-              else
-                echo "WebSocket health check failed after $MAX_RETRIES attempts"
-                exit 1
-              fi
+              echo "Health check failed after $MAX_RETRIES attempts"
+              exit 1
             fi
           done
 
