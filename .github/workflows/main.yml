@@ -517,7 +517,7 @@ jobs:
       - name: Verify WebSocket
         run: |
           echo "Testing WebSocket endpoints..."
-          WS_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/health"
+          WS_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/app/health"
           MAX_RETRIES=5
           RETRY_INTERVAL=30
 
