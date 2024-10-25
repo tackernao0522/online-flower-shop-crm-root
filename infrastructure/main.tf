@@ -441,10 +441,10 @@ resource "aws_lb_target_group" "websocket" {
     enabled             = true
     healthy_threshold   = 2
     interval            = 30
-    matcher             = "200,401,404"
+    matcher             = "200,400,404"
     path                = "/app/test"
-    protocol           = "HTTP"
-    timeout            = 10
+    protocol            = "HTTP"
+    timeout             = 10
     unhealthy_threshold = 3
   }
 
@@ -453,6 +453,10 @@ resource "aws_lb_target_group" "websocket" {
     cookie_duration = 86400
     cookie_name     = "websocket_session"
     enabled         = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-websocket-tg"
   }
 }
 
