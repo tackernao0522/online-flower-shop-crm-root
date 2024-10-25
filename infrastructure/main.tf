@@ -1010,3 +1010,15 @@ output "rds_endpoint" {
   value       = aws_db_instance.mysql.endpoint
 }
 
+output "private_subnet_1_id" {
+  value = aws_subnet.private[0].id
+}
+
+output "private_subnet_2_id" {
+  value = aws_subnet.private[1].id
+}
+
+output "ecs_tasks_security_group_id" {
+  value = aws_security_group.ecs_tasks.id
+}
+
