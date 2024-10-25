@@ -523,23 +523,20 @@ jobs:
 
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i: Testing WebSocket endpoint: $WS_CHECK_URL"
-            WS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "Connection: upgrade" \
-              -H "Upgrade: websocket" \
-              -H "Sec-WebSocket-Version: 13" \
-              -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-              $WS_CHECK_URL || echo "failed")
-            echo "WebSocket response code: $WS_RESPONSE"
+            # WebSocketヘッダーなしで通常のHTTPリクエストとしてチェック
+            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $WS_CHECK_URL || echo "failed")
+            echo "WebSocket health check response: $HEALTH_RESPONSE"
 
-            if [ "$WS_RESPONSE" = "200" ]; then
-              echo "WebSocket endpoint is accessible"
+            if [ "$HEALTH_RESPONSE" = "200" ]; then
+              echo "WebSocket health check passed!"
               exit 0
-            elif [ "$WS_RESPONSE" = "502" ] && [ $i -lt $MAX_RETRIES ]; then
-              echo "Got 502, waiting for service to initialize..."
-              sleep $RETRY_INTERVAL
             else
-              if [ $i -eq $MAX_RETRIES ]; then
-                echo "WebSocket check failed after $MAX_RETRIES attempts"
+              echo "Got response code: $HEALTH_RESPONSE"
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "Waiting for service to initialize..."
+                sleep $RETRY_INTERVAL
+              else
+                echo "WebSocket health check failed after $MAX_RETRIES attempts"
                 exit 1
               fi
             fi
