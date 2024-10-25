@@ -442,7 +442,7 @@ resource "aws_lb_target_group" "websocket" {
     healthy_threshold   = 2
     interval            = 30
     matcher             = "200,400,404"
-    path                = "/app/test"
+    path                = "/health"  # ここを修正
     protocol            = "HTTP"
     timeout             = 10
     unhealthy_threshold = 3
@@ -451,7 +451,7 @@ resource "aws_lb_target_group" "websocket" {
   stickiness {
     type            = "app_cookie"
     cookie_duration = 86400
-    cookie_name     = "websocket_session"  # クッキー名を明示的に指定
+    cookie_name     = "websocket_session"
     enabled         = true
   }
 
@@ -481,7 +481,8 @@ resource "aws_lb_listener_rule" "websocket" {
       values = [
         "/app/*",
         "/ws/*",
-        "/broadcasting/*"
+        "/broadcasting/*",
+        "/health"  # ヘルスチェック用のパスを条件に含めたい場合はここに追加
       ]
     }
   }
