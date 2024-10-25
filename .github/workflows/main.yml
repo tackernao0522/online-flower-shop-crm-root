@@ -479,8 +479,8 @@ jobs:
           aws ecs wait services-stable \
             --cluster ${{ secrets.PROJECT_NAME }}-cluster \
             --services ${{ secrets.PROJECT_NAME }}-backend-service
-          echo "Waiting additional time for container initialization..."
-          sleep 60
+          echo "Waiting additional time for container and WebSocket initialization..."
+          sleep 120
 
       - name: Verify deployment
         run: |
@@ -508,20 +508,32 @@ jobs:
         run: |
           echo "Testing WebSocket endpoints..."
           WS_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/app/test"
-          echo "Testing WebSocket endpoint: $WS_CHECK_URL"
-          WS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "Connection: upgrade" \
-            -H "Upgrade: websocket" \
-            -H "Sec-WebSocket-Version: 13" \
-            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-            $WS_CHECK_URL || echo "failed")
-          if [ "$WS_RESPONSE" = "101" ] || [ "$WS_RESPONSE" = "400" ]; then
-            echo "WebSocket endpoint is accessible"
-          else
-            echo "WebSocket check returned: $WS_RESPONSE"
-            exit 1
-          fi
+          MAX_RETRIES=5
+          RETRY_INTERVAL=30
 
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Testing WebSocket endpoint: $WS_CHECK_URL"
+            WS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Connection: upgrade" \
+              -H "Upgrade: websocket" \
+              -H "Sec-WebSocket-Version: 13" \
+              -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+              $WS_CHECK_URL || echo "failed")
+            echo "WebSocket response code: $WS_RESPONSE"
+
+            if [ "$WS_RESPONSE" = "101" ] || [ "$WS_RESPONSE" = "400" ]; then
+              echo "WebSocket endpoint is accessible"
+              exit 0
+            elif [ "$WS_RESPONSE" = "502" ] && [ $i -lt $MAX_RETRIES ]; then
+              echo "Got 502, waiting for service to initialize..."
+              sleep $RETRY_INTERVAL
+            else
+              if [ $i -eq $MAX_RETRIES ]; then
+                echo "WebSocket check failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
         if: always()
