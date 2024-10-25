@@ -504,7 +504,7 @@ jobs:
               break
             else
               echo "Got response code: $HEALTH_CHECK_RESPONSE"
-              if [ $i -lt $MAX_RETRIES]; then
+              if [ $i -lt $MAX_RETRIES ]; then
                 echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
                 sleep $RETRY_INTERVAL
               else
@@ -531,7 +531,7 @@ jobs:
               $WS_CHECK_URL || echo "failed")
             echo "WebSocket response code: $WS_RESPONSE"
 
-            if [ "$WS_RESPONSE" = "200" ]; then     # 200を成功とみなす
+            if [ "$WS_RESPONSE" = "200" ]; then
               echo "WebSocket endpoint is accessible"
               exit 0
             elif [ "$WS_RESPONSE" = "502" ] && [ $i -lt $MAX_RETRIES ]; then
