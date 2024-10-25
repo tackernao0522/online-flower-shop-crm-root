@@ -313,7 +313,7 @@ jobs:
           echo "LARAVEL_WEBSOCKETS_ENABLED=true" >> .env.production
           echo "LARAVEL_WEBSOCKETS_HOST=0.0.0.0" >> .env.production
           echo "LARAVEL_WEBSOCKETS_PORT=6001" >> .env.production
-          echo "LARAVEL_WEBSOCKETS_SCHEME=https" >> .env.production
+          echo "LARAVEL_WEBSOCKETS_SCHEME=http" >> .env.production
           echo "LARAVEL_WEBSOCKETS_DEBUG=false" >> .env.production
 
           # Cache settings
@@ -327,6 +327,9 @@ jobs:
           echo "PHP_FPM_PM_START_SERVERS=2" >> .env.production
           echo "PHP_FPM_PM_MIN_SPARE_SERVERS=1" >> .env.production
           echo "PHP_FPM_PM_MAX_SPARE_SERVERS=3" >> .env.production
+
+          # WebSocket関連の設定
+          echo "RUN_WEBSOCKETS=true" >> .env.production
 
           # AWS settings
           echo "AWS_USE_FIPS_ENDPOINT=true" >> .env.production
@@ -495,7 +498,7 @@ jobs:
               break
             else
               echo "Got response code: $HEALTH_CHECK_RESPONSE"
-              if [ $i -lt $MAX_RETRIES ]; then
+              if [ $i -lt $MAX_RETRIES]; then
                 echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
                 sleep $RETRY_INTERVAL
               else
@@ -504,6 +507,7 @@ jobs:
               fi
             fi
           done
+
       - name: Verify WebSocket
         run: |
           echo "Testing WebSocket endpoints..."
@@ -534,6 +538,7 @@ jobs:
               fi
             fi
           done
+
       - name: Slack Notification
         uses: 8398a7/action-slack@v3
         if: always()
