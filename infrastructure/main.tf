@@ -481,8 +481,7 @@ resource "aws_lb_listener_rule" "websocket" {
       values = [
         "/app/*",
         "/ws/*",
-        "/broadcasting/*",
-        "/health"  # ヘルスチェック用のパスを条件に含めたい場合はここに追加
+        "/broadcasting/*"
       ]
     }
   }
