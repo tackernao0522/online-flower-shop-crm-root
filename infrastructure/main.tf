@@ -446,7 +446,7 @@ resource "aws_lb_target_group" "websocket" {
     protocol            = "HTTP"
     timeout             = 10
     unhealthy_threshold = 3
-    port                = "traffic-port"
+    port                = 6001
   }
 
   stickiness {
