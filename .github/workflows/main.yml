@@ -338,6 +338,10 @@ jobs:
           # Frontend URL
           echo "FRONTEND_URL=https://front.${{ secrets.DOMAIN_NAME }}" >> .env.production
 
+          # JWT settings
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.production
+          echo "JWT_ALGO=${{ secrets.JWT_ALGO }}" >> .env.production
+
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}

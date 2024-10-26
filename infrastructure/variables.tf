@@ -78,3 +78,8 @@ variable "jwt_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "jwt_algo" {
+  description = "JWT algorithm to be used for authentication"
+  type        = string
+}
