@@ -235,39 +235,37 @@ jobs:
         with:
           submodules: false
           token: ${{ secrets.GH_PAT }}
-
       - name: Setup Git
         run: |
           git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
-
       - name: Update submodules
         run: |
           git submodule sync
           git submodule update --init --recursive
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-
       - name: Get Resource IDs
         id: get-resource-ids
         run: |
+          # Get resource IDs using AWS CLI
           PRIVATE_SUBNET_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-1" --query 'Subnets[0].SubnetId' --output text)
           PRIVATE_SUBNET_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-2" --query 'Subnets[0].SubnetId' --output text)
           ECS_TASKS_SG=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-ecs-tasks-sg" --query 'SecurityGroups[0].GroupId' --output text)
 
+          # Verify the values are not empty
           if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ]; then
             echo "Failed to retrieve one or more resource IDs"
             exit 1
           fi
 
+          # Set outputs for use in later steps
           echo "PRIVATE_SUBNET_1=${PRIVATE_SUBNET_1}" >> $GITHUB_ENV
           echo "PRIVATE_SUBNET_2=${PRIVATE_SUBNET_2}" >> $GITHUB_ENV
           echo "ECS_TASKS_SG=${ECS_TASKS_SG}" >> $GITHUB_ENV
@@ -276,7 +274,6 @@ jobs:
           echo "PRIVATE_SUBNET_1: ${PRIVATE_SUBNET_1}"
           echo "PRIVATE_SUBNET_2: ${PRIVATE_SUBNET_2}"
           echo "ECS_TASKS_SG: ${ECS_TASKS_SG}"
-
       - name: Get RDS endpoint and prepare .env.production
         run: |
           DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ${{ secrets.PROJECT_NAME }}-mysql --query "DBInstances[0].Endpoint.Address" --output text)
@@ -289,6 +286,7 @@ jobs:
           echo "APP_URL=https://api.${{ secrets.DOMAIN_NAME }}" >> .env.production
           echo "LOG_LEVEL=error" >> .env.production
 
+          # Database settings
           echo "DB_CONNECTION=mysql" >> .env.production
           echo "DB_HOST=${DB_HOST}" >> .env.production
           echo "DB_PORT=3306" >> .env.production
@@ -300,6 +298,7 @@ jobs:
           echo "WAIT_HOSTS=${DB_HOST}:3306" >> .env.production
           echo "WAIT_HOSTS_TIMEOUT=300" >> .env.production
 
+          # Broadcast/WebSocket settings
           echo "BROADCAST_DRIVER=pusher" >> .env.production
           echo "PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}" >> .env.production
           echo "PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
@@ -310,29 +309,36 @@ jobs:
           echo "PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
           echo "PUSHER_DEBUG=false" >> .env.production
 
+          # Laravel WebSockets settings
           echo "LARAVEL_WEBSOCKETS_ENABLED=true" >> .env.production
           echo "LARAVEL_WEBSOCKETS_HOST=0.0.0.0" >> .env.production
           echo "LARAVEL_WEBSOCKETS_PORT=6001" >> .env.production
           echo "LARAVEL_WEBSOCKETS_SCHEME=http" >> .env.production
           echo "LARAVEL_WEBSOCKETS_DEBUG=false" >> .env.production
 
+          # Cache settings
           echo "CACHE_DRIVER=file" >> .env.production
           echo "SESSION_DRIVER=file" >> .env.production
           echo "QUEUE_CONNECTION=sync" >> .env.production
 
+          # PHP-FPM settings
           echo "PHP_FPM_PM=dynamic" >> .env.production
           echo "PHP_FPM_PM_MAX_CHILDREN=5" >> .env.production
           echo "PHP_FPM_PM_START_SERVERS=2" >> .env.production
           echo "PHP_FPM_PM_MIN_SPARE_SERVERS=1" >> .env.production
           echo "PHP_FPM_PM_MAX_SPARE_SERVERS=3" >> .env.production
 
+          # WebSocket関連の設定
           echo "RUN_WEBSOCKETS=true" >> .env.production
 
+          # AWS settings
           echo "AWS_USE_FIPS_ENDPOINT=true" >> .env.production
           echo "ECS_ENABLE_EXECUTE_COMMAND=true" >> .env.production
 
+          # Frontend URL
           echo "FRONTEND_URL=https://front.${{ secrets.DOMAIN_NAME }}" >> .env.production
 
+          # JWT settings
           echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.production
           echo "JWT_ALGO=${{ secrets.JWT_ALGO }}" >> .env.production
 
@@ -377,7 +383,7 @@ jobs:
                 }
               ] |
               .healthCheck = {
-                "command": ["CMD-SHELL", "curl -f http://localhost/health || exit 1"],
+                "command": ["CMD-SHELL", "php artisan health || exit 1"],
                 "interval": 30,
                 "timeout": 5,
                 "retries": 3,
@@ -433,15 +439,18 @@ jobs:
       - name: Get Resource IDs
         id: get-resource-ids
         run: |
+          # Get resource IDs using AWS CLI
           PRIVATE_SUBNET_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-1" --query 'Subnets[0].SubnetId' --output text)
           PRIVATE_SUBNET_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-2" --query 'Subnets[0].SubnetId' --output text)
           ECS_TASKS_SG=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-ecs-tasks-sg" --query 'SecurityGroups[0].GroupId' --output text)
 
+          # Verify the values are not empty
           if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ]; then
             echo "Failed to retrieve one or more resource IDs"
             exit 1
           fi
 
+          # Set outputs for use in later steps
           echo "PRIVATE_SUBNET_1=${PRIVATE_SUBNET_1}" >> $GITHUB_ENV
           echo "PRIVATE_SUBNET_2=${PRIVATE_SUBNET_2}" >> $GITHUB_ENV
           echo "ECS_TASKS_SG=${ECS_TASKS_SG}" >> $GITHUB_ENV
@@ -493,19 +502,42 @@ jobs:
           RETRY_INTERVAL=30
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i: Checking $HEALTH_CHECK_URL"
-            HEALTH_CHECK_RESPONSE=$(curl -s $HEALTH_CHECK_URL)
-            STATUS=$(echo $HEALTH_CHECK_RESPONSE | jq -r '.status' 2>/dev/null)
-
-            if [ "$STATUS" = "ok" ]; then
+            HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+            if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
               echo "Health check passed!"
-              echo "Response: $HEALTH_CHECK_RESPONSE"
               break
             else
-              echo "Health check failed. Response: $HEALTH_CHECK_RESPONSE"
+              echo "Got response code: $HEALTH_CHECK_RESPONSE"
               if [ $i -lt $MAX_RETRIES ]; then
                 echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
                 sleep $RETRY_INTERVAL
               else
+                echo "Health check failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Verify WebSocket
+        run: |
+          echo "Testing service health..."
+          HEALTH_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/health"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=30
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+            echo "Health check response: $HEALTH_RESPONSE"
+
+            if [ "$HEALTH_RESPONSE" = "200" ]; then
+              echo "Service health check passed!"
+              exit 0
+            elif [ "$HEALTH_RESPONSE" != "200" ] && [ $i -lt $MAX_RETRIES ]; then
+              echo "Waiting for service to initialize..."
+              sleep $RETRY_INTERVAL
+            else
+              if [ $i -eq $MAX_RETRIES ]; then
                 echo "Health check failed after $MAX_RETRIES attempts"
                 exit 1
               fi
