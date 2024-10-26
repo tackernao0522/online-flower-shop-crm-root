@@ -337,87 +337,87 @@ jobs:
           echo "JWT_ALGO=${{ secrets.JWT_ALGO }}" >> .env.production
 
       - name: Build, tag, and push image to Amazon ECR
-              env:
-                ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-                ECR_REPOSITORY: ${{ secrets.PROJECT_NAME }}-backend
-                IMAGE_TAG: ${{ github.sha }}
-              run: |
-                docker build \
-                  --build-arg AWS_REGION=${{ secrets.AWS_REGION }} \
-                  --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
-                  --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
-                  --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
-                  --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
-                  -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-                  -f ./api/infra/php/Dockerfile.prod \
-                  ./api
-                docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.PROJECT_NAME }}-backend
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg AWS_REGION=${{ secrets.AWS_REGION }} \
+            --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
+            --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
+            --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
+            --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -f ./api/infra/php/Dockerfile.prod \
+            ./api
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-            - name: Update ECS task definition
-              run: |
-                TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.PROJECT_NAME }}-backend --query taskDefinition)
-                NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
-                  family: .family,
-                  taskRoleArn: .taskRoleArn,
-                  executionRoleArn: .executionRoleArn,
-                  networkMode: "awsvpc",
-                  containerDefinitions: [
-                    .containerDefinitions[0] |
-                    .image = "${{ steps.login-ecr.outputs.registry }}/${{ secrets.PROJECT_NAME }}-backend:${{ github.sha }}" |
-                    .portMappings = [
-                      {
-                        "containerPort": 80,
-                        "hostPort": 80,
-                        "protocol": "tcp"
-                      },
-                      {
-                        "containerPort": 6001,
-                        "hostPort": 6001,
-                        "protocol": "tcp"
-                      }
-                    ] |
-                    .healthCheck = {
-                      "command": ["CMD-SHELL", "curl -f http://localhost/health | grep -q '\"status\":\"ok\"' || exit 1"],
-                      "interval": 30,
-                      "timeout": 5,
-                      "retries": 3,
-                      "startPeriod": 60
-                    } |
-                    .logConfiguration = {
-                      "logDriver": "awslogs",
-                      "options": {
-                        "awslogs-group": "/ecs/${{ secrets.PROJECT_NAME }}-backend",
-                        "awslogs-region": "${{ secrets.AWS_REGION }}",
-                        "awslogs-stream-prefix": "ecs",
-                        "mode": "non-blocking",
-                        "max-buffer-size": "4m"
-                      }
-                    } |
-                    .environment += [
-                      {
-                        "name": "RUN_WEBSOCKETS",
-                        "value": "true"
-                      }
-                    ]
-                  ],
-                  requiresCompatibilities: ["FARGATE"],
-                  cpu: "256",
-                  memory: "512"
-                }')
-                echo "$NEW_TASK_DEFINITION" > task-definition.json
-                NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$(cat task-definition.json)")
-                NEW_REVISION=$(echo $NEW_TASK_INFO | jq -r '.taskDefinition.revision')
-                echo "New task definition revision: $NEW_REVISION"
+      - name: Update ECS task definition
+        run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.PROJECT_NAME }}-backend --query taskDefinition)
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
+            family: .family,
+            taskRoleArn: .taskRoleArn,
+            executionRoleArn: .executionRoleArn,
+            networkMode: "awsvpc",
+            containerDefinitions: [
+              .containerDefinitions[0] |
+              .image = "${{ steps.login-ecr.outputs.registry }}/${{ secrets.PROJECT_NAME }}-backend:${{ github.sha }}" |
+              .portMappings = [
+                {
+                  "containerPort": 80,
+                  "hostPort": 80,
+                  "protocol": "tcp"
+                },
+                {
+                  "containerPort": 6001,
+                  "hostPort": 6001,
+                  "protocol": "tcp"
+                }
+              ] |
+              .healthCheck = {
+                "command": ["CMD-SHELL", "curl -f http://localhost/health | grep -q '\"status\":\"ok\"' || exit 1"],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+              } |
+              .logConfiguration = {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/${{ secrets.PROJECT_NAME }}-backend",
+                  "awslogs-region": "${{ secrets.AWS_REGION }}",
+                  "awslogs-stream-prefix": "ecs",
+                  "mode": "non-blocking",
+                  "max-buffer-size": "4m"
+                }
+              } |
+              .environment += [
+                {
+                  "name": "RUN_WEBSOCKETS",
+                  "value": "true"
+                }
+              ]
+            ],
+            requiresCompatibilities: ["FARGATE"],
+            cpu: "256",
+            memory: "512"
+          }')
+          echo "$NEW_TASK_DEFINITION" > task-definition.json
+          NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$(cat task-definition.json)")
+          NEW_REVISION=$(echo $NEW_TASK_INFO | jq -r '.taskDefinition.revision')
+          echo "New task definition revision: $NEW_REVISION"
 
-            - name: Slack Notification
-              uses: 8398a7/action-slack@v3
-              if: always()
-              with:
-                status: ${{ job.status }}
-                fields: repo,message,commit,author,action,eventName,ref,workflow
-              env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   deploy-to-ecs:
     needs: build-and-push-image
