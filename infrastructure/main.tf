@@ -559,7 +559,9 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "PHP_FPM_PM_MIN_SPARE_SERVERS", value = "1" },
       { name = "PHP_FPM_PM_MAX_SPARE_SERVERS", value = "3" },
       { name = "AWS_USE_FIPS_ENDPOINT", value = "true" },
-      { name = "ECS_ENABLE_EXECUTE_COMMAND", value = "true" }
+      { name = "ECS_ENABLE_EXECUTE_COMMAND", value = "true" },
+      { name = "JWT_SECRET", value = var.jwt_secret },
+      { name = "JWT_ALGO", value = var.jwt_algo },
     ]
     logConfiguration = {
       logDriver = "awslogs"
