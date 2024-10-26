@@ -513,7 +513,7 @@ resource "aws_ecs_task_definition" "backend" {
       }
     ]
     healthCheck = {
-      command     = ["CMD-SHELL", "php artisan health || exit 1"]
+      command     = ["CMD-SHELL", "curl -f http://localhost/health | grep -q '\"status\":\"ok\"' || exit 1"]
       interval    = 30
       timeout     = 5
       retries     = 3
@@ -524,7 +524,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "APP_DEBUG", value = "false" },
       { name = "APP_KEY", value = var.app_key },
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
-      { name = "LOG_CHANNEL", value = "stack" },
+      { name = "LOG_CHANNEL", value = "stderr" },
       { name = "LOG_LEVEL", value = "error" },
       { name = "PUSHER_DEBUG", value = "false" },
       { name = "LARAVEL_WEBSOCKETS_DEBUG", value = "false" },
@@ -984,6 +984,25 @@ resource "aws_route53_record" "frontend" {
     name                   = aws_lb.main.dns_name
     zone_id                = aws_lb.main.zone_id
     evaluate_target_health = true
+  }
+}
+
+
+# CloudWatch Alarms for Backend Service Health
+resource "aws_cloudwatch_metric_alarm" "backend_health" {
+  alarm_name          = "${var.project_name}-backend-health"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "UnhealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period             = "60"
+  statistic          = "Maximum"
+  threshold          = "0"
+  alarm_description  = "This metric monitors unhealthy host count for backend service"
+
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.backend.arn_suffix
+    LoadBalancer = aws_lb.main.arn_suffix
   }
 }
 

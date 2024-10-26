@@ -282,7 +282,7 @@ jobs:
           echo "APP_ENV=production" >> .env.production
           echo "APP_KEY=${{ secrets.APP_KEY }}" >> .env.production
           echo "APP_DEBUG=false" >> .env.production
-          echo "LOG_CHANNEL=stack" >> .env.production
+          echo "LOG_CHANNEL=stderr" >> .env.production
           echo "APP_URL=https://api.${{ secrets.DOMAIN_NAME }}" >> .env.production
           echo "LOG_LEVEL=error" >> .env.production
 
