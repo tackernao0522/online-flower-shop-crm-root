@@ -612,6 +612,7 @@ jobs:
           echo "NEXT_PUBLIC_PUSHER_PORT=443" >> .env.production
           echo "NEXT_PUBLIC_PUSHER_SCHEME=https" >> .env.production
           echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
+          echo "NEXT_PUBLIC_PUSHER_FORCE_TLS=true" >> .env.production
 
       - name: Build and push frontend Docker image
         env:
@@ -620,7 +621,10 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           cd front
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile.prod .
+          docker build \
+            --build-arg NODE_ENV=production \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -f Dockerfile.prod .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       - name: Update ECS task definition for frontend
