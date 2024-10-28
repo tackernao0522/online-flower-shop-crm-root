@@ -13,7 +13,7 @@ crash.*.log
 *secret*.tfvars
 *secrets*.tfvars
 *private*.tfvars
-./terraform.tfvars
+*.tfvars
 
 # Include main tfvars file
 !terraform.tfvars
