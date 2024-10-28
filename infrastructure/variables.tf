@@ -1,4 +1,3 @@
-# 基本設定
 variable "aws_region" {
   description = "The AWS region to deploy to"
   type        = string
@@ -9,13 +8,11 @@ variable "project_name" {
   type        = string
 }
 
-# ネットワーク設定
 variable "vpc_cidr" {
   description = "The CIDR block for the VPC"
   type        = string
 }
 
-# ドメイン設定
 variable "domain_name" {
   description = "The main domain name for the application"
   type        = string
@@ -33,12 +30,6 @@ variable "backend_subdomain" {
   default     = "api"
 }
 
-# データベース設定
-variable "db_name" {
-  description = "The name of the database"
-  type        = string
-}
-
 variable "db_username" {
   description = "Username for the database"
   type        = string
@@ -50,25 +41,17 @@ variable "db_password" {
   sensitive   = true
 }
 
-# Laravel アプリケーション設定
+variable "db_name" {
+  description = "The name of the database"
+  type        = string
+}
+
 variable "app_key" {
   description = "Laravel application key"
   type        = string
   sensitive   = true
 }
 
-variable "jwt_secret" {
-  description = "JWT secret for authentication"
-  type        = string
-  sensitive   = true
-}
-
-variable "jwt_algo" {
-  description = "JWT algorithm to be used for authentication"
-  type        = string
-}
-
-# Pusher設定
 variable "pusher_app_id" {
   description = "Pusher App ID"
   type        = string
@@ -87,5 +70,16 @@ variable "pusher_app_secret" {
 
 variable "pusher_app_cluster" {
   description = "Pusher App Cluster"
+  type        = string
+}
+
+variable "jwt_secret" {
+  description = "JWT secret for authentication"
+  type        = string
+  sensitive   = true
+}
+
+variable "jwt_algo" {
+  description = "JWT algorithm to be used for authentication"
   type        = string
 }
