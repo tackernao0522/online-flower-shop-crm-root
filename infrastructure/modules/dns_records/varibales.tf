@@ -1,15 +1,10 @@
-variable "project_name" {
-  description = "The name of the project"
+variable "zone_id" {
+  description = "The ID of the Route53 hosted zone"
   type        = string
 }
 
 variable "domain_name" {
-  description = "The domain name for the application"
-  type        = string
-}
-
-variable "zone_id" {
-  description = "The ID of the Route53 hosted zone"
+  description = "The domain name"
   type        = string
 }
 

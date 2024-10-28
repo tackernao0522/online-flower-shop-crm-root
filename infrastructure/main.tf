@@ -34,13 +34,16 @@ module "load_balancer" {
   domain_name           = var.domain_name
   certificate_arn       = module.dns_certificate.certificate_arn
 
-  depends_on = [module.networking, module.security, module.dns_certificate]
+  depends_on = [
+    module.networking,
+    module.security,
+    module.dns_certificate  # モジュール全体に対する依存を指定
+  ]
 }
 
 # Route53レコードの作成
 module "dns_records" {
   source       = "./modules/dns_records"
-  project_name = var.project_name
   domain_name  = var.domain_name
   zone_id      = module.dns_certificate.zone_id
   alb_dns_name = module.load_balancer.alb_dns_name

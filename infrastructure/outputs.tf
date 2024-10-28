@@ -54,6 +54,16 @@ output "nameservers" {
   value       = module.dns_certificate.zone_name_servers
 }
 
+output "certificate_arn" {
+  description = "The ARN of the SSL certificate"
+  value       = module.dns_certificate.certificate_arn
+}
+
+output "domain_name" {
+  description = "The domain name"
+  value       = var.domain_name
+}
+
 # FQDNs
 output "backend_fqdn" {
   description = "The FQDN of the backend endpoint"
