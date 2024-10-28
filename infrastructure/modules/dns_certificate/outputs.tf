@@ -8,12 +8,12 @@ output "certificate_arn" {
   value       = aws_acm_certificate_validation.cert_validation.certificate_arn
 }
 
+output "zone_name_servers" {
+  description = "The name servers of the hosted zone"
+  value       = aws_route53_zone.main.name_servers
+}
+
 output "domain_name" {
   description = "The domain name"
   value       = var.domain_name
-}
-
-output "zone_name_servers" {
-  description = "The name servers for the hosted zone"
-  value       = aws_route53_zone.main.name_servers
 }
