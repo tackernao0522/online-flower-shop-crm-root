@@ -1,4 +1,4 @@
-# Local .terraform directories
+# .terraform directory
 **/.terraform/*
 
 # .tfstate files
@@ -9,20 +9,13 @@
 crash.log
 crash.*.log
 
-# Exclude sensitive tfvars files
+# Exclude sensitive files
 *secret*.tfvars
 *secrets*.tfvars
 *private*.tfvars
 
 # Include main tfvars file
 !terraform.tfvars
-
-# Ignore override files as they are usually used to override resources locally and so
-# are not checked in
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
 
 # Include override files you do wish to add to version control using negated pattern
 # !example_override.tf
@@ -34,3 +27,6 @@ override.tf.json
 .terraformrc
 terraform.rc
 .idea
+
+# Backup directory
+tfstate_backups/
