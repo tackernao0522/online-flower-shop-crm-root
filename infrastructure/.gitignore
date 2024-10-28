@@ -15,9 +15,6 @@ crash.*.log
 *private*.tfvars
 terraform.tfvars
 
-# Include main tfvars file
-!terraform.tfvars
-
 # Include override files you do wish to add to version control using negated pattern
 # !example_override.tf
 
