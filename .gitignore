@@ -22,4 +22,4 @@ infrastructure/terraform.tfvars
 *.pem
 
 backend-task-definition.json
-frontend-task-deinition.json
+frontend-task-definition.json
