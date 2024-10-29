@@ -20,3 +20,6 @@ infrastructure/terraform.tfvars
 .env.template
 .env.prod
 *.pem
+
+backend-task-definition.json
+frontend-task-deinition.json
