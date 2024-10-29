@@ -1,0 +1,72 @@
+{
+  "family": "ofcrm-frontend",
+  "taskRoleArn": "arn:aws:iam::699475951464:role/ofcrm-ecs-task-role",
+  "executionRoleArn": "arn:aws:iam::699475951464:role/ofcrm-ecs-execution-role",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "ofcrm-frontend",
+      "image": "699475951464.dkr.ecr.ap-northeast-1.amazonaws.com/ofcrm-frontend:20241029_191934",
+      "cpu": 256,
+      "memory": 512,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "NEXT_PUBLIC_APP_ENV",
+          "value": "production"
+        },
+        {
+          "name": "NEXT_PUBLIC_API_URL",
+          "value": "https://api.tkb-tech.com"
+        },
+        {
+          "name": "NEXT_PUBLIC_PUSHER_APP_KEY",
+          "value": "6b00814b7057838fa8d8"
+        },
+        {
+          "name": "NEXT_PUBLIC_PUSHER_HOST",
+          "value": "api-ap3.pusher.com"
+        },
+        {
+          "name": "NEXT_PUBLIC_PUSHER_PORT",
+          "value": "443"
+        },
+        {
+          "name": "NEXT_PUBLIC_PUSHER_SCHEME",
+          "value": "https"
+        },
+        {
+          "name": "NEXT_PUBLIC_PUSHER_APP_CLUSTER",
+          "value": "ap3"
+        }
+      ],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ofcrm-frontend",
+          "awslogs-region": "ap-northeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "systemControls": []
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512"
+}
