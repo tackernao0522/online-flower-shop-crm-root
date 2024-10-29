@@ -7,3 +7,16 @@ infrastructure/terraform.tfstate
 infrastructure/terraform.terraform.tfstate.1728457383.backup
 infrastructure/.terraform/
 infrastructure/terraform.tfvars
+
+# Production deployment files
+.env.prod
+*.pem
+
+# Production deployment files
+.env.prod
+*.pem
+
+# Production deployment files
+.env.template
+.env.prod
+*.pem
