@@ -56,7 +56,7 @@ variable "pusher_app_secret" {
 }
 
 variable "pusher_app_cluster" {
-  description = "Pusher App Cluster"
+  description = "Pusher app cluster (non-sensitive)"
   type        = string
 }
 
@@ -104,5 +104,10 @@ variable "frontend_target_group_arn" {
 
 variable "websocket_target_group_arn" {
   description = "The ARN of the WebSocket target group"
+  type        = string
+}
+
+variable "secrets_arn" {
+  description = "The ARN of the Secrets Manager secret containing sensitive environment variables"
   type        = string
 }

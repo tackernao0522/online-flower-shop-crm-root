@@ -74,11 +74,15 @@ PRIVATE_SUBNET_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${PR
 PRIVATE_SUBNET_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${PROJECT_NAME}-private-subnet-2" --query 'Subnets[0].SubnetId' --output text)
 ECS_TASKS_SG=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${PROJECT_NAME}-ecs-tasks-sg" --query 'SecurityGroups[0].GroupId' --output text)
 
-if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ]; then
+# ALBのDNS名を取得
+ALB_DNS_NAME=$(aws elbv2 describe-load-balancers --names "${PROJECT_NAME}-alb" --query 'LoadBalancers[0].DNSName' --output text)
+
+if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ] || [ -z "$ALB_DNS_NAME" ]; then
     echo -e "${RED}Error: 必要なAWSリソースIDの取得に失敗しました${NC}"
     echo "PRIVATE_SUBNET_1: ${PRIVATE_SUBNET_1}"
     echo "PRIVATE_SUBNET_2: ${PRIVATE_SUBNET_2}"
     echo "ECS_TASKS_SG: ${ECS_TASKS_SG}"
+    echo "ALB_DNS_NAME: ${ALB_DNS_NAME}"
     exit 1
 fi
 
@@ -106,13 +110,18 @@ docker-compose -f "${PROJECT_ROOT}/docker-compose.prod.yml" push || {
 
 # バックエンドのタスク定義の更新
 echo "Updating backend task definition..."
+
+# Secrets ManagerのARNを取得
+SECRETS_ARN=$(aws secretsmanager describe-secret --secret-id "${PROJECT_NAME}/production/app-secrets" --query 'ARN' --output text)
+
 BACKEND_TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${PROJECT_NAME}-backend --query taskDefinition)
-NEW_BACKEND_TASK_DEFINITION=$(echo $BACKEND_TASK_DEFINITION | jq '{
-    family: .family,
-    taskRoleArn: "arn:aws:iam::'"${AWS_ACCOUNT_ID}"':role/ofcrm-ecs-task-role",
-    executionRoleArn: "arn:aws:iam::'"${AWS_ACCOUNT_ID}"':role/ofcrm-ecs-execution-role",
-    networkMode: "awsvpc",
-    containerDefinitions: [
+NEW_BACKEND_TASK_DEFINITION=$(echo "$BACKEND_TASK_DEFINITION" | jq --arg secrets_arn "$SECRETS_ARN" '
+{
+    "family": .family,
+    "taskRoleArn": "arn:aws:iam::'${AWS_ACCOUNT_ID}':role/ofcrm-ecs-task-role",
+    "executionRoleArn": "arn:aws:iam::'${AWS_ACCOUNT_ID}':role/ofcrm-ecs-execution-role",
+    "networkMode": "awsvpc",
+    "containerDefinitions": [
       .containerDefinitions[0] |
       .image = "'${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${PROJECT_NAME}-backend:${IMAGE_TAG}'" |
       .portMappings = [
@@ -137,10 +146,6 @@ NEW_BACKEND_TASK_DEFINITION=$(echo $BACKEND_TASK_DEFINITION | jq '{
           "value": "production"
         },
         {
-          "name": "APP_KEY",
-          "value": "'${APP_KEY}'"
-        },
-        {
           "name": "APP_DEBUG",
           "value": "false"
         },
@@ -161,40 +166,12 @@ NEW_BACKEND_TASK_DEFINITION=$(echo $BACKEND_TASK_DEFINITION | jq '{
           "value": "mysql"
         },
         {
-          "name": "DB_HOST",
-          "value": "'${DB_HOST}'"
-        },
-        {
           "name": "DB_PORT",
           "value": "3306"
         },
         {
-          "name": "DB_DATABASE",
-          "value": "'${DB_DATABASE}'"
-        },
-        {
-          "name": "DB_USERNAME",
-          "value": "'${DB_USERNAME}'"
-        },
-        {
-          "name": "DB_PASSWORD",
-          "value": "'${DB_PASSWORD}'"
-        },
-        {
           "name": "BROADCAST_DRIVER",
           "value": "pusher"
-        },
-        {
-          "name": "PUSHER_APP_ID",
-          "value": "'${PUSHER_APP_ID}'"
-        },
-        {
-          "name": "PUSHER_APP_KEY",
-          "value": "'${PUSHER_APP_KEY}'"
-        },
-        {
-          "name": "PUSHER_APP_SECRET",
-          "value": "'${PUSHER_APP_SECRET}'"
         },
         {
           "name": "PUSHER_HOST",
@@ -225,10 +202,6 @@ NEW_BACKEND_TASK_DEFINITION=$(echo $BACKEND_TASK_DEFINITION | jq '{
           "value": "6001"
         },
         {
-          "name": "JWT_SECRET",
-          "value": "'${JWT_SECRET}'"
-        },
-        {
           "name": "JWT_ALGO",
           "value": "HS256"
         },
@@ -239,6 +212,44 @@ NEW_BACKEND_TASK_DEFINITION=$(echo $BACKEND_TASK_DEFINITION | jq '{
         {
           "name": "RUN_WEBSOCKETS",
           "value": "true"
+        }
+      ] |
+      .secrets = [
+        {
+          "name": "APP_KEY",
+          "valueFrom": ($secrets_arn + ":APP_KEY::")
+        },
+        {
+          "name": "DB_HOST",
+          "valueFrom": ($secrets_arn + ":DB_HOST::")
+        },
+        {
+          "name": "DB_DATABASE",
+          "valueFrom": ($secrets_arn + ":DB_DATABASE::")
+        },
+        {
+          "name": "DB_USERNAME",
+          "valueFrom": ($secrets_arn + ":DB_USERNAME::")
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": ($secrets_arn + ":DB_PASSWORD::")
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": ($secrets_arn + ":JWT_SECRET::")
+        },
+        {
+          "name": "PUSHER_APP_ID",
+          "valueFrom": ($secrets_arn + ":PUSHER_APP_ID::")
+        },
+        {
+          "name": "PUSHER_APP_KEY",
+          "valueFrom": ($secrets_arn + ":PUSHER_APP_KEY::")
+        },
+        {
+          "name": "PUSHER_APP_SECRET",
+          "valueFrom": ($secrets_arn + ":PUSHER_APP_SECRET::")
         }
       ] |
       .healthCheck = {
@@ -259,9 +270,9 @@ NEW_BACKEND_TASK_DEFINITION=$(echo $BACKEND_TASK_DEFINITION | jq '{
         }
       }
     ],
-    requiresCompatibilities: ["FARGATE"],
-    cpu: "256",
-    memory: "512"
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "256",
+    "memory": "512"
 }')
 
 echo "$NEW_BACKEND_TASK_DEFINITION" > backend-task-definition.json
@@ -391,13 +402,14 @@ sleep 120  # コンテナの初期化待機
 
 # バックエンドの健全性チェック
 echo "Verifying backend deployment..."
-HEALTH_CHECK_URL="https://api.${DOMAIN_NAME}/health"
+HEALTH_CHECK_URL="https://${ALB_DNS_NAME}/health"
+HOST_HEADER="api.${DOMAIN_NAME}"
 MAX_RETRIES=15
 RETRY_INTERVAL=30
 
 for i in $(seq 1 $MAX_RETRIES); do
-    echo "Attempt $i: Checking $HEALTH_CHECK_URL"
-    if curl -s -f $HEALTH_CHECK_URL > /dev/null; then
+    echo "Attempt $i: Checking ALB health check endpoint"
+    if curl -s -f -k -H "Host: ${HOST_HEADER}" "${HEALTH_CHECK_URL}" > /dev/null; then
         echo "Backend health check passed!"
         break
     fi
@@ -417,7 +429,7 @@ RETRY_INTERVAL=30
 echo "Testing service health..."
 for i in $(seq 1 $MAX_RETRIES); do
     echo "Attempt $i: Checking service health..."
-    if curl -s -f $HEALTH_CHECK_URL > /dev/null; then
+    if curl -s -f -k -H "Host: ${HOST_HEADER}" "${HEALTH_CHECK_URL}" > /dev/null; then
         echo "Service health check passed!"
         break
     fi
@@ -430,10 +442,11 @@ done
 
 # フロントエンドの健全性チェック
 echo "Verifying frontend deployment..."
-FRONTEND_URL="https://front.${DOMAIN_NAME}"
+FRONTEND_HEALTH_URL="https://${ALB_DNS_NAME}"
+FRONTEND_HOST_HEADER="front.${DOMAIN_NAME}"
 for i in $(seq 1 $MAX_RETRIES); do
     echo "Attempt $i: Checking frontend..."
-    if curl -s -f $FRONTEND_URL > /dev/null; then
+    if curl -s -f -k -H "Host: ${FRONTEND_HOST_HEADER}" "${FRONTEND_HEALTH_URL}" > /dev/null; then
         echo "Frontend health check passed!"
         break
     fi
@@ -471,14 +484,14 @@ sleep 60
 echo "Performing final health checks..."
 
 # バックエンドの最終確認
-if ! curl -s -f "https://api.${DOMAIN_NAME}/health" > /dev/null; then
+if ! curl -s -f -k -H "Host: ${HOST_HEADER}" "${HEALTH_CHECK_URL}" > /dev/null; then
     echo -e "${RED}Error: Backend final health check failed${NC}"
     exit 1
 fi
 echo "Backend final health check passed"
 
 # フロントエンドの最終確認
-if ! curl -s -f "https://front.${DOMAIN_NAME}" > /dev/null; then
+if ! curl -s -f -k -H "Host: ${FRONTEND_HOST_HEADER}" "${FRONTEND_HEALTH_URL}" > /dev/null; then
     echo -e "${RED}Error: Frontend final health check failed${NC}"
     exit 1
 fi

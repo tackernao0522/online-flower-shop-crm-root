@@ -74,3 +74,8 @@ output "frontend_fqdn" {
   description = "The FQDN of the frontend endpoint"
   value       = module.dns_records.frontend_fqdn
 }
+
+output "secrets_arn" {
+  description = "The ARN of the Secrets Manager secret"
+  value       = module.secrets.secrets_arn
+}

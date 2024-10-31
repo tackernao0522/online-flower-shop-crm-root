@@ -1,3 +1,6 @@
+# AWS アカウントIDを取得するためのデータソース
+data "aws_caller_identity" "current" {}
+
 # ALB Security Group
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-alb-sg"
@@ -163,6 +166,36 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_ecr_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
+# Secrets ManagerとSTSへのアクセス権限を追加
+resource "aws_iam_role_policy" "ecs_execution_secrets_policy" {
+  name = "${var.project_name}-ecs-execution-secrets-policy"
+  role = aws_iam_role.ecs_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ],
+        Resource = [
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}/*",
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}/production/*"
+        ]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "sts:AssumeRole"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "ecs_execution_ssm_policy" {
   name = "${var.project_name}-ecs-execution-ssm-policy"
   role = aws_iam_role.ecs_execution_role.id
@@ -171,11 +204,11 @@ resource "aws_iam_role_policy" "ecs_execution_ssm_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
+        Effect = "Allow",
         Action = [
           "ssm:GetParameters",
           "ssm:GetParameter"
-        ]
+        ],
         Resource = "*"
       }
     ]
@@ -216,14 +249,14 @@ resource "aws_iam_role_policy" "ecs_task_ssm_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
+        Effect = "Allow",
         Action = [
           "ssmmessages:CreateControlChannel",
           "ssmmessages:CreateDataChannel",
           "ssmmessages:OpenControlChannel",
           "ssmmessages:OpenDataChannel",
           "ssm:UpdateInstanceInformation"
-        ]
+        ],
         Resource = "*"
       }
     ]
