@@ -111,6 +111,9 @@ module "container" {
   pusher_app_cluster   = var.pusher_app_cluster
   jwt_secret           = var.jwt_secret
   jwt_algo             = var.jwt_algo
+
+  basic_auth_user = var.basic_auth_user
+  basic_auth_pass = var.basic_auth_pass
   
   # Database information
   db_host              = module.database.db_endpoint

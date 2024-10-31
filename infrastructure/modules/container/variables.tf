@@ -111,3 +111,13 @@ variable "secrets_arn" {
   description = "The ARN of the Secrets Manager secret containing sensitive environment variables"
   type        = string
 }
+
+variable "basic_auth_user" {
+  description = "Basic authentication username for frontend"
+  type        = string
+}
+
+variable "basic_auth_pass" {
+  description = "Basic authentication password for frontend"
+  type        = string
+}

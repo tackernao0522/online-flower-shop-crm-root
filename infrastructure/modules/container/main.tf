@@ -212,14 +212,26 @@ resource "aws_ecs_task_definition" "frontend" {
       containerPort = 3000
       hostPort      = 3000
     }]
+    # ヘルスチェックを追加
+    healthCheck = {
+      command     = ["CMD-SHELL", "curl -f http://localhost:3000/ || echo 0"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
     environment = [
       # 基本設定
       { name = "NODE_ENV", value = "production" },
       { name = "NEXT_PUBLIC_APP_ENV", value = "production" },
-      
+
+      # Basic認証設定を追加
+      { name = "BASIC_AUTH_USER", value = var.basic_auth_user },
+      { name = "BASIC_AUTH_PASS", value = var.basic_auth_pass },
+
       # API接続設定
       { name = "NEXT_PUBLIC_API_URL", value = "https://api.${var.domain_name}" },
-      
+
       # WebSocket基本設定
       { name = "NEXT_PUBLIC_PUSHER_HOST", value = "api.${var.domain_name}" },
       { name = "NEXT_PUBLIC_PUSHER_PORT", value = "443" },

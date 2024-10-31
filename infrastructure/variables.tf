@@ -109,3 +109,14 @@ variable "pusher_app_cluster" {
   description = "Pusher App Cluster"
   type        = string
 }
+
+# Basic認証設定
+variable "basic_auth_user" {
+  description = "Basic authentication username for frontend"
+  type        = string
+}
+
+variable "basic_auth_pass" {
+  description = "Basic authentication password for frontend"
+  type        = string
+}
