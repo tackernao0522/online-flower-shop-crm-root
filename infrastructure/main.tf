@@ -15,6 +15,7 @@ module "security" {
   project_name = var.project_name
   vpc_id       = module.networking.vpc_id
   vpc_cidr     = var.vpc_cidr
+  aws_region   = var.aws_region
 }
 
 # 証明書の作成を先に行う
@@ -67,6 +68,30 @@ module "database" {
   depends_on = [module.networking, module.security]
 }
 
+module "secrets" {
+  source = "./modules/secrets"
+  
+  project_name               = var.project_name
+  aws_region                = var.aws_region
+  vpc_id                    = module.networking.vpc_id
+  private_subnet_ids        = module.networking.private_subnet_ids
+  ecs_tasks_security_group_id = module.security.ecs_tasks_security_group_id
+  ecs_task_role_id          = module.security.ecs_task_role_id 
+  
+  # シークレット値
+  db_host                   = var.db_host
+  db_database               = var.db_name
+  db_username               = var.db_username
+  db_password               = var.db_password
+  app_key                   = var.app_key
+  jwt_secret                = var.jwt_secret
+  pusher_app_id             = var.pusher_app_id
+  pusher_app_key            = var.pusher_app_key
+  pusher_app_secret         = var.pusher_app_secret
+  aws_access_key_id         = var.aws_access_key_id
+  aws_secret_access_key     = var.aws_secret_access_key
+}
+
 # コンテナサービスの設定
 module "container" {
   source                = "./modules/container"
@@ -97,8 +122,15 @@ module "container" {
   backend_target_group_arn  = module.load_balancer.backend_target_group_arn
   frontend_target_group_arn = module.load_balancer.frontend_target_group_arn
   websocket_target_group_arn = module.load_balancer.websocket_target_group_arn
+  secrets_arn = module.secrets.secrets_arn
 
-  depends_on = [module.networking, module.security, module.database, module.load_balancer]
+  depends_on = [
+    module.networking,
+    module.security,
+    module.database,
+    module.load_balancer,
+    module.secrets  # 依存関係を追加
+  ]
 }
 
 # モニタリングの設定

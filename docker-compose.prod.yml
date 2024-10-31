@@ -8,37 +8,28 @@ services:
         AWS_REGION: ${AWS_REGION}
     image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${PROJECT_NAME}-backend:${IMAGE_TAG}
     environment:
-      # アプリケーション設定
+      # アプリケーション設定（非機密情報のみ）
       APP_NAME: ${PROJECT_NAME}
       APP_ENV: production
-      APP_KEY: ${APP_KEY}
       APP_DEBUG: "false"
       LOG_CHANNEL: stderr
       APP_URL: https://api.${DOMAIN_NAME}
       LOG_LEVEL: error
 
-      # データベース設定
+      # データベース基本設定（非機密情報のみ）
       DB_CONNECTION: mysql
-      DB_HOST: ${DB_HOST}
       DB_PORT: 3306
-      DB_DATABASE: ${DB_DATABASE}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
       DB_CONNECTION_RETRIES: 5
       DB_CONNECTION_RETRY_DELAY: 5
       WAIT_HOSTS: ${DB_HOST}:3306
       WAIT_HOSTS_TIMEOUT: 300
 
-      # Broadcast/WebSocket設定
+      # Broadcast/WebSocket設定（非機密情報のみ）
       BROADCAST_DRIVER: pusher
-      PUSHER_APP_ID: ${PUSHER_APP_ID}
-      PUSHER_APP_KEY: ${PUSHER_APP_KEY}
-      PUSHER_APP_SECRET: ${PUSHER_APP_SECRET}
       PUSHER_HOST: api-ap3.pusher.com
       PUSHER_PORT: 443
       PUSHER_SCHEME: https
       PUSHER_APP_CLUSTER: ${PUSHER_APP_CLUSTER}
-      PUSHER_DEBUG: "false"
 
       # Laravel WebSockets設定
       LARAVEL_WEBSOCKETS_ENABLED: "true"
@@ -47,8 +38,7 @@ services:
       LARAVEL_WEBSOCKETS_SCHEME: http
       LARAVEL_WEBSOCKETS_DEBUG: "false"
 
-      # JWT設定
-      JWT_SECRET: ${JWT_SECRET}
+      # JWT基本設定（非機密情報のみ）
       JWT_ALGO: HS256
 
       # フロントエンドURL
@@ -59,6 +49,11 @@ services:
       AWS_USE_FIPS_ENDPOINT: "true"
       ECS_ENABLE_EXECUTE_COMMAND: "true"
 
+      # AWS認証情報（Secrets Manager接続用）
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_REGION}
+
   frontend:
     platform: linux/amd64
     build:
@@ -68,10 +63,14 @@ services:
         NODE_ENV: production
     image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${PROJECT_NAME}-frontend:${IMAGE_TAG}
     environment:
+      # 基本設定（非機密情報）
       NODE_ENV: production
       NEXT_PUBLIC_APP_ENV: production
+
+      # API接続設定（非機密情報）
       NEXT_PUBLIC_API_URL: https://api.${DOMAIN_NAME}
-      NEXT_PUBLIC_PUSHER_APP_KEY: ${PUSHER_APP_KEY}
+
+      # WebSocket接続設定（非機密情報）
       NEXT_PUBLIC_PUSHER_HOST: api.${DOMAIN_NAME}
       NEXT_PUBLIC_PUSHER_PORT: 443
       NEXT_PUBLIC_PUSHER_SCHEME: https

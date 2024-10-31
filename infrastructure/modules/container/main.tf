@@ -58,28 +58,60 @@ resource "aws_ecs_task_definition" "backend" {
       retries     = 3
       startPeriod = 60
     }
+    # Secrets Managerから取得する機密情報
+    secrets = [
+      {
+        name      = "APP_KEY"
+        valueFrom = "${var.secrets_arn}:APP_KEY::"
+      },
+      {
+        name      = "DB_HOST"
+        valueFrom = "${var.secrets_arn}:DB_HOST::"
+      },
+      {
+        name      = "DB_DATABASE"
+        valueFrom = "${var.secrets_arn}:DB_DATABASE::"
+      },
+      {
+        name      = "DB_USERNAME"
+        valueFrom = "${var.secrets_arn}:DB_USERNAME::"
+      },
+      {
+        name      = "DB_PASSWORD"
+        valueFrom = "${var.secrets_arn}:DB_PASSWORD::"
+      },
+      {
+        name      = "JWT_SECRET"
+        valueFrom = "${var.secrets_arn}:JWT_SECRET::"
+      },
+      {
+        name      = "PUSHER_APP_ID"
+        valueFrom = "${var.secrets_arn}:PUSHER_APP_ID::"
+      },
+      {
+        name      = "PUSHER_APP_KEY"
+        valueFrom = "${var.secrets_arn}:PUSHER_APP_KEY::"
+      },
+      {
+        name      = "PUSHER_APP_SECRET"
+        valueFrom = "${var.secrets_arn}:PUSHER_APP_SECRET::"
+      }
+    ]
+    # 非機密情報は環境変数として保持
     environment = [
       { name = "APP_ENV", value = "production" },
       { name = "APP_DEBUG", value = "false" },
-      { name = "APP_KEY", value = var.app_key },
       { name = "APP_URL", value = "https://api.${var.domain_name}" },
       { name = "LOG_CHANNEL", value = "stderr" },
       { name = "LOG_LEVEL", value = "error" },
       { name = "PUSHER_DEBUG", value = "false" },
       { name = "LARAVEL_WEBSOCKETS_DEBUG", value = "false" },
-      { name = "DB_HOST", value = var.db_host },
-      { name = "DB_DATABASE", value = var.db_name },
-      { name = "DB_USERNAME", value = var.db_username },
-      { name = "DB_PASSWORD", value = var.db_password },
       { name = "DB_CONNECTION_RETRIES", value = "5" },
       { name = "DB_CONNECTION_RETRY_DELAY", value = "5" },
       { name = "WAIT_HOSTS", value = "${var.db_host}:3306" },
       { name = "WAIT_HOSTS_TIMEOUT", value = "300" },
       { name = "FRONTEND_URL", value = "https://front.${var.domain_name}" },
       { name = "BROADCAST_DRIVER", value = "pusher" },
-      { name = "PUSHER_APP_ID", value = var.pusher_app_id },
-      { name = "PUSHER_APP_KEY", value = var.pusher_app_key },
-      { name = "PUSHER_APP_SECRET", value = var.pusher_app_secret },
       { name = "PUSHER_HOST", value = "api-ap3.pusher.com" },
       { name = "PUSHER_PORT", value = "443" },
       { name = "PUSHER_SCHEME", value = "https" },
@@ -99,8 +131,10 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "PHP_FPM_PM_MAX_SPARE_SERVERS", value = "3" },
       { name = "AWS_USE_FIPS_ENDPOINT", value = "true" },
       { name = "ECS_ENABLE_EXECUTE_COMMAND", value = "true" },
-      { name = "JWT_SECRET", value = var.jwt_secret },
       { name = "JWT_ALGO", value = var.jwt_algo },
+      # AWS認証情報を追加
+      { name = "AWS_REGION", value = var.aws_region },
+      { name = "AWS_DEFAULT_REGION", value = var.aws_region }
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -179,12 +213,20 @@ resource "aws_ecs_task_definition" "frontend" {
       hostPort      = 3000
     }]
     environment = [
+      # 基本設定
+      { name = "NODE_ENV", value = "production" },
+      { name = "NEXT_PUBLIC_APP_ENV", value = "production" },
+      
+      # API接続設定
       { name = "NEXT_PUBLIC_API_URL", value = "https://api.${var.domain_name}" },
-      { name = "NEXT_PUBLIC_PUSHER_APP_KEY", value = var.pusher_app_key },
-      { name = "NEXT_PUBLIC_PUSHER_HOST", value = "api-ap3.pusher.com" },
+      
+      # WebSocket基本設定
+      { name = "NEXT_PUBLIC_PUSHER_HOST", value = "api.${var.domain_name}" },
       { name = "NEXT_PUBLIC_PUSHER_PORT", value = "443" },
       { name = "NEXT_PUBLIC_PUSHER_SCHEME", value = "https" },
-      { name = "NEXT_PUBLIC_PUSHER_APP_CLUSTER", value = var.pusher_app_cluster }
+      { name = "NEXT_PUBLIC_PUSHER_APP_CLUSTER", value = var.pusher_app_cluster },
+      { name = "NEXT_PUBLIC_WEBSOCKET_HOST", value = "api.${var.domain_name}" },
+      { name = "NEXT_PUBLIC_WEBSOCKET_PORT", value = "443" }
     ]
     logConfiguration = {
       logDriver = "awslogs"

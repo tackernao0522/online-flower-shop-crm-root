@@ -4,6 +4,19 @@ variable "aws_region" {
   type        = string
 }
 
+# AWS認証情報
+variable "aws_access_key_id" {
+  description = "AWS access key ID for Secrets Manager"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_access_key" {
+  description = "AWS secret access key for Secrets Manager"
+  type        = string
+  sensitive   = true
+}
+
 variable "project_name" {
   description = "The name of the project"
   type        = string
@@ -31,6 +44,13 @@ variable "backend_subdomain" {
   description = "The subdomain for the backend API"
   type        = string
   default     = "api"
+}
+
+# データベース情報
+variable "db_host" {
+  description = "Database host"
+  type        = string
+  sensitive   = true
 }
 
 # データベース設定
