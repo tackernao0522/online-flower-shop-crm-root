@@ -1,0 +1,783 @@
+name: Build, Test, and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: false
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 2
+
+      - name: Install docker-compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.3.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+
+      - name: Clean up Docker system
+        run: |
+          docker-compose down -v
+          docker system prune -a -f
+
+      - name: Setup Git
+        run: |
+          git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
+
+      - name: Update submodules
+        run: |
+          git submodule sync
+          git submodule update --init --recursive
+
+      - name: Check for API changes
+        id: check_api_changes
+        run: |
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- api || echo 'changed')" ]; then
+              echo "No changes in API. Skipping API tests."
+              echo "SKIP_API_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "Changes detected in API. Will run API tests."
+              echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
+            fi
+          else
+            echo "First commit or shallow clone. Running API tests."
+            echo "SKIP_API_TESTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Check for Frontend changes
+        id: check_frontend_changes
+        run: |
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            if [ -z "$(git diff --quiet HEAD^ HEAD -- front || echo 'changed')" ]; then
+              echo "No changes in Frontend. Skipping Frontend tests."
+              echo "SKIP_FRONTEND_TESTS=true" >> $GITHUB_ENV
+            else
+              echo "Changes detected in Frontend. Will run Frontend tests."
+              echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
+            fi
+          else
+            echo "First commit or shallow clone. Running Frontend tests."
+            echo "SKIP_FRONTEND_TESTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Install Required Packages
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client php-cli php-mbstring php-xml php-curl php-dom php-mysql curl
+
+      - name: Install Composer
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          curl -sS https://getcomposer.org/installer | php
+          sudo mv composer.phar /usr/local/bin/composer
+
+      - name: Debug Environment Variables
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          echo "CI_MYSQL_DATABASE: ${{ secrets.CI_MYSQL_DATABASE }}"
+          echo "CI_MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}"
+          echo "CI_MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}"
+          echo "CI_MYSQL_ROOT_PASSWORD: ${{ secrets.CI_MYSQL_ROOT_PASSWORD }}"
+
+      - name: Start MySQL Container
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          docker run -d --name mysql-container -e MYSQL_ROOT_PASSWORD=${{ secrets.CI_MYSQL_ROOT_PASSWORD }} -e MYSQL_DATABASE=${{ secrets.CI_MYSQL_DATABASE }} -e MYSQL_USER=${{ secrets.CI_MYSQL_USER }} -e MYSQL_PASSWORD=${{ secrets.CI_MYSQL_PASSWORD }} -p 3306:3306 mysql:8.0
+
+      - name: Wait for MySQL to be ready
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          until docker exec mysql-container mysqladmin ping --silent; do
+              echo "Waiting for MySQL to be ready..."
+              sleep 10
+          done
+
+      - name: Configure MySQL
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${{ secrets.CI_MYSQL_ROOT_PASSWORD }}';"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE DATABASE IF NOT EXISTS ${{ secrets.CI_MYSQL_DATABASE }};"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "CREATE USER IF NOT EXISTS '${{ secrets.CI_MYSQL_USER }}'@'%' IDENTIFIED BY '${{ secrets.CI_MYSQL_PASSWORD }}';"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "GRANT ALL PRIVILEGES ON ${{ secrets.CI_MYSQL_DATABASE }}.* TO '${{ secrets.CI_MYSQL_USER }}'@'%';"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "FLUSH PRIVILEGES;"
+
+      - name: Check MySQL Logs
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          docker logs mysql-container
+
+      - name: Check MySQL Service
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "SHOW DATABASES;"
+          docker exec mysql-container mysql -u ${{ secrets.CI_MYSQL_USER }} -p"${{ secrets.CI_MYSQL_PASSWORD }}" -e "SHOW DATABASES;"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v3
+        if: env.SKIP_API_TESTS == 'false'
+        with:
+          path: ${{ github.workspace }}/api/src/vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('api/src/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer Dependencies
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          cd api/src
+          composer update --no-interaction --prefer-dist
+
+      - name: Create and Debug .env file
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          cd api/src
+          cp .env.example .env
+          sed -i "s#DB_HOST=.*#DB_HOST=127.0.0.1#" .env
+          sed -i "s#DB_DATABASE=.*#DB_DATABASE=${{ secrets.CI_MYSQL_DATABASE }}#" .env
+          sed -i "s#DB_USERNAME=.*#DB_USERNAME=${{ secrets.CI_MYSQL_USER }}#" .env
+          sed -i "s#DB_PASSWORD=.*#DB_PASSWORD=${{ secrets.CI_MYSQL_PASSWORD }}#" .env
+          sed -i "s#PUSHER_APP_ID=.*#PUSHER_APP_ID=null#" .env
+          sed -i "s#PUSHER_APP_KEY=.*#PUSHER_APP_KEY=null#" .env
+          sed -i "s#PUSHER_APP_SECRET=.*#PUSHER_APP_SECRET=null#" .env
+          sed -i "s#PUSHER_APP_CLUSTER=.*#PUSHER_APP_CLUSTER=null#" .env
+          sed -i "s#BROADCAST_DRIVER=.*#BROADCAST_DRIVER=log#" .env
+          sed -i "s#LARAVEL_WEBSOCKETS_ENABLED=.*#LARAVEL_WEBSOCKETS_ENABLED=false#" .env
+          php artisan key:generate
+          php artisan jwt:secret
+          echo "Contents of .env file:"
+          cat .env
+
+      - name: Clear Config Cache
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          cd api/src
+          php artisan config:clear
+          php artisan cache:clear
+
+      - name: Debug Database Connection
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          cd api/src
+          echo "Environment variables:"
+          echo "CI_MYSQL_DATABASE: ${{ secrets.CI_MYSQL_DATABASE }}"
+          echo "CI_MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}"
+          echo "CI_MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}"
+          echo "MySQL Version:"
+          docker exec mysql-container mysql -u"${{ secrets.CI_MYSQL_USER }}" -p"${{ secrets.CI_MYSQL_PASSWORD }}" -e "SELECT VERSION();" || echo "Failed to connect with user"
+          echo "MySQL Users:"
+          docker exec mysql-container mysql -u root -p"${{ secrets.CI_MYSQL_ROOT_PASSWORD }}" -e "SELECT user, host FROM mysql.user;"
+          echo "Database connection details:"
+          php artisan tinker --execute="print_r(config('database.connections.mysql'));"
+          echo "Attempting connection:"
+          php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Connection successful!'; } catch (\Exception \$e) { echo 'Connection failed: ' . \$e->getMessage(); }"
+
+      - name: Run database migrations and seed
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          cd api/src
+          php artisan migrate --force --seed
+
+      - name: Run Laravel tests
+        if: env.SKIP_API_TESTS == 'false'
+        run: |
+          cd api/src
+          php artisan test
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18.17.0"
+
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        if: env.SKIP_FRONTEND_TESTS == 'false'
+        with:
+          path: ${{ github.workspace }}/front/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('front/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - name: Install Node.js dependencies
+        if: env.SKIP_FRONTEND_TESTS == 'false'
+        working-directory: front
+        run: npm install
+
+      - name: Run frontend tests
+        if: env.SKIP_FRONTEND_TESTS == 'false'
+        working-directory: front
+        run: npm test
+
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          mention: here
+          if_mention: failure,cancelled
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # build-and-push-image:
+  #   needs: build-and-test
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+  #       with:
+  #         submodules: false
+  #         token: ${{ secrets.GH_PAT }}
+  #     - name: Setup Git
+  #       run: |
+  #         git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
+  #     - name: Update submodules
+  #       run: |
+  #         git submodule sync
+  #         git submodule update --init --recursive
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v1
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
+  #     - name: Login to Amazon ECR
+  #       id: login-ecr
+  #       uses: aws-actions/amazon-ecr-login@v1
+  #     - name: Get Resource IDs
+  #       id: get-resource-ids
+  #       run: |
+  #         # Get resource IDs using AWS CLI
+  #         PRIVATE_SUBNET_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-1" --query 'Subnets[0].SubnetId' --output text)
+  #         PRIVATE_SUBNET_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-2" --query 'Subnets[0].SubnetId' --output text)
+  #         ECS_TASKS_SG=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-ecs-tasks-sg" --query 'SecurityGroups[0].GroupId' --output text)
+
+  #         # Verify the values are not empty
+  #         if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ]; then
+  #           echo "Failed to retrieve one or more resource IDs"
+  #           exit 1
+  #         fi
+
+  #         # Set outputs for use in later steps
+  #         echo "PRIVATE_SUBNET_1=${PRIVATE_SUBNET_1}" >> $GITHUB_ENV
+  #         echo "PRIVATE_SUBNET_2=${PRIVATE_SUBNET_2}" >> $GITHUB_ENV
+  #         echo "ECS_TASKS_SG=${ECS_TASKS_SG}" >> $GITHUB_ENV
+
+  #         echo "Resource IDs retrieved successfully:"
+  #         echo "PRIVATE_SUBNET_1: ${PRIVATE_SUBNET_1}"
+  #         echo "PRIVATE_SUBNET_2: ${PRIVATE_SUBNET_2}"
+  #         echo "ECS_TASKS_SG: ${ECS_TASKS_SG}"
+  #     - name: Get RDS endpoint and prepare .env.production
+  #       run: |
+  #         DB_HOST=$(aws rds describe-db-instances --db-instance-identifier ${{ secrets.PROJECT_NAME }}-mysql --query "DBInstances[0].Endpoint.Address" --output text)
+  #         cd ./api/src
+  #         echo "APP_NAME=${{ secrets.PROJECT_NAME }}" > .env.production
+  #         echo "APP_ENV=production" >> .env.production
+  #         echo "APP_KEY=${{ secrets.APP_KEY }}" >> .env.production
+  #         echo "APP_DEBUG=false" >> .env.production
+  #         echo "LOG_CHANNEL=stderr" >> .env.production
+  #         echo "APP_URL=https://api.${{ secrets.DOMAIN_NAME }}" >> .env.production
+  #         echo "LOG_LEVEL=error" >> .env.production
+
+  #         # Database settings
+  #         echo "DB_CONNECTION=mysql" >> .env.production
+  #         echo "DB_HOST=${DB_HOST}" >> .env.production
+  #         echo "DB_PORT=3306" >> .env.production
+  #         echo "DB_DATABASE=${{ secrets.DB_DATABASE }}" >> .env.production
+  #         echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env.production
+  #         echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env.production
+  #         echo "DB_CONNECTION_RETRIES=5" >> .env.production
+  #         echo "DB_CONNECTION_RETRY_DELAY=5" >> .env.production
+  #         echo "WAIT_HOSTS=${DB_HOST}:3306" >> .env.production
+  #         echo "WAIT_HOSTS_TIMEOUT=300" >> .env.production
+
+  #         # Broadcast/WebSocket settings
+  #         echo "BROADCAST_DRIVER=pusher" >> .env.production
+  #         echo "PUSHER_APP_ID=${{ secrets.PUSHER_APP_ID }}" >> .env.production
+  #         echo "PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
+  #         echo "PUSHER_APP_SECRET=${{ secrets.PUSHER_APP_SECRET }}" >> .env.production
+  #         echo "PUSHER_HOST=api-ap3.pusher.com" >> .env.production
+  #         echo "PUSHER_PORT=443" >> .env.production
+  #         echo "PUSHER_SCHEME=https" >> .env.production
+  #         echo "PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
+  #         echo "PUSHER_DEBUG=false" >> .env.production
+
+  #         # Laravel WebSockets settings
+  #         echo "LARAVEL_WEBSOCKETS_ENABLED=true" >> .env.production
+  #         echo "LARAVEL_WEBSOCKETS_HOST=0.0.0.0" >> .env.production
+  #         echo "LARAVEL_WEBSOCKETS_PORT=6001" >> .env.production
+  #         echo "LARAVEL_WEBSOCKETS_SCHEME=http" >> .env.production
+  #         echo "LARAVEL_WEBSOCKETS_DEBUG=false" >> .env.production
+
+  #         # Cache settings
+  #         echo "CACHE_DRIVER=file" >> .env.production
+  #         echo "SESSION_DRIVER=file" >> .env.production
+  #         echo "QUEUE_CONNECTION=sync" >> .env.production
+
+  #         # PHP-FPM settings
+  #         echo "PHP_FPM_PM=dynamic" >> .env.production
+  #         echo "PHP_FPM_PM_MAX_CHILDREN=5" >> .env.production
+  #         echo "PHP_FPM_PM_START_SERVERS=2" >> .env.production
+  #         echo "PHP_FPM_PM_MIN_SPARE_SERVERS=1" >> .env.production
+  #         echo "PHP_FPM_PM_MAX_SPARE_SERVERS=3" >> .env.production
+
+  #         # WebSocket関連の設定
+  #         echo "RUN_WEBSOCKETS=true" >> .env.production
+
+  #         # AWS settings
+  #         echo "AWS_USE_FIPS_ENDPOINT=true" >> .env.production
+  #         echo "ECS_ENABLE_EXECUTE_COMMAND=true" >> .env.production
+
+  #         # Frontend URL
+  #         echo "FRONTEND_URL=https://front.${{ secrets.DOMAIN_NAME }}" >> .env.production
+
+  #         # JWT settings
+  #         echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.production
+  #         echo "JWT_ALGO=${{ secrets.JWT_ALGO }}" >> .env.production
+
+  #     - name: Build, tag, and push image to Amazon ECR
+  #       env:
+  #         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+  #         ECR_REPOSITORY: ${{ secrets.PROJECT_NAME }}-backend
+  #         IMAGE_TAG: ${{ github.sha }}
+  #       run: |
+  #         docker build \
+  #           --build-arg AWS_REGION=${{ secrets.AWS_REGION }} \
+  #           --build-arg NGINX_CONF_PATH=./infra/nginx/nginx.prod.conf \
+  #           --build-arg DEFAULT_CONF_PATH=./infra/nginx/default.prod.conf \
+  #           --build-arg PHP_INI_PATH=./infra/php/php.prod.ini \
+  #           --build-arg ENTRYPOINT_SCRIPT_PATH=./infra/php/docker-entrypoint.prod.sh \
+  #           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+  #           -f ./api/infra/php/Dockerfile.prod \
+  #           ./api
+  #         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  #     - name: Update ECS task definition
+  #       run: |
+  #         TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.PROJECT_NAME }}-backend --query taskDefinition)
+  #         NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
+  #           family: .family,
+  #           taskRoleArn: .taskRoleArn,
+  #           executionRoleArn: .executionRoleArn,
+  #           networkMode: "awsvpc",
+  #           containerDefinitions: [
+  #             .containerDefinitions[0] |
+  #             .image = "${{ steps.login-ecr.outputs.registry }}/${{ secrets.PROJECT_NAME }}-backend:${{ github.sha }}" |
+  #             .portMappings = [
+  #               {
+  #                 "containerPort": 80,
+  #                 "hostPort": 80,
+  #                 "protocol": "tcp"
+  #               },
+  #               {
+  #                 "containerPort": 6001,
+  #                 "hostPort": 6001,
+  #                 "protocol": "tcp"
+  #               }
+  #             ] |
+  #             .healthCheck = {
+  #               "command": ["CMD-SHELL", "php artisan health || exit 1"],
+  #               "interval": 30,
+  #               "timeout": 5,
+  #               "retries": 3,
+  #               "startPeriod": 60
+  #             } |
+  #             .logConfiguration = {
+  #               "logDriver": "awslogs",
+  #               "options": {
+  #                 "awslogs-group": "/ecs/${{ secrets.PROJECT_NAME }}-backend",
+  #                 "awslogs-region": "${{ secrets.AWS_REGION }}",
+  #                 "awslogs-stream-prefix": "ecs",
+  #                 "mode": "non-blocking",
+  #                 "max-buffer-size": "4m"
+  #               }
+  #             } |
+  #             .environment += [
+  #               {
+  #                 "name": "RUN_WEBSOCKETS",
+  #                 "value": "true"
+  #               }
+  #             ]
+  #           ],
+  #           requiresCompatibilities: ["FARGATE"],
+  #           cpu: "256",
+  #           memory: "512"
+  #         }')
+  #         echo "$NEW_TASK_DEFINITION" > task-definition.json
+  #         NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json "$(cat task-definition.json)")
+  #         NEW_REVISION=$(echo $NEW_TASK_INFO | jq -r '.taskDefinition.revision')
+  #         echo "New task definition revision: $NEW_REVISION"
+
+  #     - name: Slack Notification
+  #       uses: 8398a7/action-slack@v3
+  #       if: always()
+  #       with:
+  #         status: ${{ job.status }}
+  #         fields: repo,message,commit,author,action,eventName,ref,workflow
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # deploy-to-ecs:
+  #   needs: build-and-push-image
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v1
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
+
+  #     - name: Get Resource IDs
+  #       id: get-resource-ids
+  #       run: |
+  #         # Get resource IDs using AWS CLI
+  #         PRIVATE_SUBNET_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-1" --query 'Subnets[0].SubnetId' --output text)
+  #         PRIVATE_SUBNET_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-2" --query 'Subnets[0].SubnetId' --output text)
+  #         ECS_TASKS_SG=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-ecs-tasks-sg" --query 'SecurityGroups[0].GroupId' --output text)
+
+  #         # Verify the values are not empty
+  #         if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ]; then
+  #           echo "Failed to retrieve one or more resource IDs"
+  #           exit 1
+  #         fi
+
+  #         # Set outputs for use in later steps
+  #         echo "PRIVATE_SUBNET_1=${PRIVATE_SUBNET_1}" >> $GITHUB_ENV
+  #         echo "PRIVATE_SUBNET_2=${PRIVATE_SUBNET_2}" >> $GITHUB_ENV
+  #         echo "ECS_TASKS_SG=${ECS_TASKS_SG}" >> $GITHUB_ENV
+
+  #         echo "Resource IDs retrieved successfully:"
+  #         echo "PRIVATE_SUBNET_1: ${PRIVATE_SUBNET_1}"
+  #         echo "PRIVATE_SUBNET_2: ${PRIVATE_SUBNET_2}"
+  #         echo "ECS_TASKS_SG: ${ECS_TASKS_SG}"
+
+  #     - name: Deploy to ECS
+  #       run: |
+  #         TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.PROJECT_NAME }}-backend --query 'taskDefinition.taskDefinitionArn' --output text)
+  #         aws ecs update-service \
+  #           --cluster ${{ secrets.PROJECT_NAME }}-cluster \
+  #           --service ${{ secrets.PROJECT_NAME }}-backend-service \
+  #           --task-definition $TASK_DEFINITION \
+  #           --force-new-deployment \
+  #           --platform-version "1.4.0" \
+  #           --enable-execute-command \
+  #           --deployment-configuration '{
+  #             "deploymentCircuitBreaker": {
+  #               "enable": true,
+  #               "rollback": true
+  #             },
+  #             "maximumPercent": 200,
+  #             "minimumHealthyPercent": 50
+  #           }' \
+  #           --network-configuration '{
+  #             "awsvpcConfiguration": {
+  #               "subnets": ["'$PRIVATE_SUBNET_1'", "'$PRIVATE_SUBNET_2'"],
+  #               "securityGroups": ["'$ECS_TASKS_SG'"],
+  #               "assignPublicIp": "DISABLED"
+  #             }
+  #           }'
+
+  #     - name: Wait for service to be stable
+  #       run: |
+  #         echo "Waiting for ECS service to be stable..."
+  #         aws ecs wait services-stable \
+  #           --cluster ${{ secrets.PROJECT_NAME }}-cluster \
+  #           --services ${{ secrets.PROJECT_NAME }}-backend-service
+  #         echo "Waiting additional time for container and WebSocket initialization..."
+  #         sleep 120
+
+  #     - name: Verify deployment
+  #       run: |
+  #         HEALTH_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/health"
+  #         MAX_RETRIES=20
+  #         RETRY_INTERVAL=30
+  #         for i in $(seq 1 $MAX_RETRIES); do
+  #           echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+  #           HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+  #           if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+  #             echo "Health check passed!"
+  #             break
+  #           else
+  #             echo "Got response code: $HEALTH_CHECK_RESPONSE"
+  #             if [ $i -lt $MAX_RETRIES ]; then
+  #               echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
+  #               sleep $RETRY_INTERVAL
+  #             else
+  #               echo "Health check failed after $MAX_RETRIES attempts"
+  #               exit 1
+  #             fi
+  #           fi
+  #         done
+
+  #     - name: Verify WebSocket
+  #       run: |
+  #         echo "Testing service health..."
+  #         HEALTH_CHECK_URL="https://api.${{ secrets.DOMAIN_NAME }}/health"
+  #         MAX_RETRIES=5
+  #         RETRY_INTERVAL=30
+
+  #         for i in $(seq 1 $MAX_RETRIES); do
+  #           echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+  #           HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+  #           echo "Health check response: $HEALTH_RESPONSE"
+
+  #           if [ "$HEALTH_RESPONSE" = "200" ]; then
+  #             echo "Service health check passed!"
+  #             exit 0
+  #           elif [ "$HEALTH_RESPONSE" != "200" ] && [ $i -lt $MAX_RETRIES ]; then
+  #             echo "Waiting for service to initialize..."
+  #             sleep $RETRY_INTERVAL
+  #           else
+  #             if [ $i -eq $MAX_RETRIES ]; then
+  #               echo "Health check failed after $MAX_RETRIES attempts"
+  #               exit 1
+  #             fi
+  #           fi
+  #         done
+
+  #     - name: Slack Notification
+  #       uses: 8398a7/action-slack@v3
+  #       if: always()
+  #       with:
+  #         status: ${{ job.status }}
+  #         fields: repo,message,commit,author,action,eventName,ref,workflow
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # build-and-push-frontend-image:
+  #   needs: build-and-test
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+  #       with:
+  #         submodules: false
+  #         token: ${{ secrets.GH_PAT }}
+  #     - name: Setup Git
+  #       run: |
+  #         git config --global url."https://${{ secrets.GH_PAT }}@github.com/".insteadOf "git@github.com:"
+  #     - name: Update submodules
+  #       run: |
+  #         git submodule sync
+  #         git submodule update --init --recursive
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v1
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
+  #     - name: Login to Amazon ECR
+  #       id: login-ecr
+  #       uses: aws-actions/amazon-ecr-login@v1
+  #     - name: Get Resource IDs
+  #       id: get-resource-ids
+  #       run: |
+  #         # Get resource IDs using AWS CLI
+  #         PRIVATE_SUBNET_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-1" --query 'Subnets[0].SubnetId' --output text)
+  #         PRIVATE_SUBNET_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-2" --query 'Subnets[0].SubnetId' --output text)
+  #         ECS_TASKS_SG=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-ecs-tasks-sg" --query 'SecurityGroups[0].GroupId' --output text)
+
+  #         # Verify the values are not empty
+  #         if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ]; then
+  #           echo "Failed to retrieve one or more resource IDs"
+  #           exit 1
+  #         fi
+
+  #         # Set outputs for use in later steps
+  #         echo "PRIVATE_SUBNET_1=${PRIVATE_SUBNET_1}" >> $GITHUB_ENV
+  #         echo "PRIVATE_SUBNET_2=${PRIVATE_SUBNET_2}" >> $GITHUB_ENV
+  #         echo "ECS_TASKS_SG=${ECS_TASKS_SG}" >> $GITHUB_ENV
+
+  #         echo "Resource IDs retrieved successfully:"
+  #         echo "PRIVATE_SUBNET_1: ${PRIVATE_SUBNET_1}"
+  #         echo "PRIVATE_SUBNET_2: ${PRIVATE_SUBNET_2}"
+  #         echo "ECS_TASKS_SG: ${ECS_TASKS_SG}"
+  #     - name: Create .env.production file
+  #       run: |
+  #         cd front
+  #         echo "NEXT_PUBLIC_APP_ENV=production" > .env.production
+  #         echo "NEXT_PUBLIC_API_URL=https://api.${{ secrets.DOMAIN_NAME }}" >> .env.production
+  #         echo "NEXT_PUBLIC_PUSHER_APP_KEY=${{ secrets.PUSHER_APP_KEY }}" >> .env.production
+  #         echo "NEXT_PUBLIC_PUSHER_HOST=api-ap3.pusher.com" >> .env.production
+  #         echo "NEXT_PUBLIC_PUSHER_PORT=443" >> .env.production
+  #         echo "NEXT_PUBLIC_PUSHER_SCHEME=https" >> .env.production
+  #         echo "NEXT_PUBLIC_PUSHER_APP_CLUSTER=${{ secrets.PUSHER_APP_CLUSTER }}" >> .env.production
+  #         echo "NEXT_PUBLIC_PUSHER_FORCE_TLS=true" >> .env.production
+
+  #     - name: Build and push frontend Docker image
+  #       env:
+  #         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+  #         ECR_REPOSITORY: ${{ secrets.PROJECT_NAME }}-frontend
+  #         IMAGE_TAG: ${{ github.sha }}
+  #       run: |
+  #         cd front
+  #         docker build \
+  #           --build-arg NODE_ENV=production \
+  #           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+  #           -f Dockerfile.prod .
+  #         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+  #     - name: Update ECS task definition for frontend
+  #       run: |
+  #         TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.PROJECT_NAME }}-frontend --query taskDefinition)
+  #         NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq '{
+  #           family: .family,
+  #           taskRoleArn: .taskRoleArn,
+  #           executionRoleArn: .executionRoleArn,
+  #           networkMode: "awsvpc",
+  #           containerDefinitions: [
+  #             .containerDefinitions[0] |
+  #             .image = "${{ steps.login-ecr.outputs.registry }}/${{ secrets.PROJECT_NAME }}-frontend:${{ github.sha }}" |
+  #             .portMappings = [
+  #               {
+  #                 "containerPort": 3000,
+  #                 "hostPort": 3000,
+  #                 "protocol": "tcp"
+  #               }
+  #             ] |
+  #             .environment = [
+  #               { "name": "NEXT_PUBLIC_API_URL", "value": "https://api.${{ secrets.DOMAIN_NAME }}" },
+  #               { "name": "NEXT_PUBLIC_PUSHER_APP_KEY", "value": "${{ secrets.PUSHER_APP_KEY }}" },
+  #               { "name": "NEXT_PUBLIC_PUSHER_HOST", "value": "api-ap3.pusher.com" },
+  #               { "name": "NEXT_PUBLIC_PUSHER_PORT", "value": "443" },
+  #               { "name": "NEXT_PUBLIC_PUSHER_SCHEME", "value": "https" },
+  #               { "name": "NEXT_PUBLIC_PUSHER_APP_CLUSTER", "value": "${{ secrets.PUSHER_APP_CLUSTER }}" }
+  #             ] |
+  #             .logConfiguration = {
+  #               "logDriver": "awslogs",
+  #               "options": {
+  #                 "awslogs-group": "/ecs/${{ secrets.PROJECT_NAME }}-frontend",
+  #                 "awslogs-region": "${{ secrets.AWS_REGION }}",
+  #                 "awslogs-stream-prefix": "ecs"
+  #               }
+  #             }
+  #           ],
+  #           requiresCompatibilities: ["FARGATE"],
+  #           cpu: "256",
+  #           memory: "512"
+  #         }')
+  #         echo "$NEW_TASK_DEFINITION" > frontend-task-definition.json
+  #         aws ecs register-task-definition --cli-input-json "$(cat frontend-task-definition.json)"
+
+  #     - name: Slack Notification
+  #       uses: 8398a7/action-slack@v3
+  #       if: always()
+  #       with:
+  #         status: ${{ job.status }}
+  #         fields: repo,message,commit,author,action,eventName,ref,workflow
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # deploy-frontend:
+  #   needs: build-and-push-frontend-image
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v1
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ secrets.AWS_REGION }}
+
+  #     - name: Get Resource IDs
+  #       id: get-resource-ids
+  #       run: |
+  #         # Get resource IDs using AWS CLI
+  #         PRIVATE_SUBNET_1=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-1" --query 'Subnets[0].SubnetId' --output text)
+  #         PRIVATE_SUBNET_2=$(aws ec2 describe-subnets --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-private-subnet-2" --query 'Subnets[0].SubnetId' --output text)
+  #         ECS_TASKS_SG=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${{ secrets.PROJECT_NAME }}-ecs-tasks-sg" --query 'SecurityGroups[0].GroupId' --output text)
+
+  #         # Verify the values are not empty
+  #         if [ -z "$PRIVATE_SUBNET_1" ] || [ -z "$PRIVATE_SUBNET_2" ] || [ -z "$ECS_TASKS_SG" ]; then
+  #           echo "Failed to retrieve one or more resource IDs"
+  #           exit 1
+  #         fi
+
+  #         # Set outputs for use in later steps
+  #         echo "PRIVATE_SUBNET_1=${PRIVATE_SUBNET_1}" >> $GITHUB_ENV
+  #         echo "PRIVATE_SUBNET_2=${PRIVATE_SUBNET_2}" >> $GITHUB_ENV
+  #         echo "ECS_TASKS_SG=${ECS_TASKS_SG}" >> $GITHUB_ENV
+
+  #         echo "Resource IDs retrieved successfully:"
+  #         echo "PRIVATE_SUBNET_1: ${PRIVATE_SUBNET_1}"
+  #         echo "PRIVATE_SUBNET_2: ${PRIVATE_SUBNET_2}"
+  #         echo "ECS_TASKS_SG: ${ECS_TASKS_SG}"
+
+  #     - name: Deploy frontend to ECS
+  #       run: |
+  #         TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ secrets.PROJECT_NAME }}-frontend --query 'taskDefinition.taskDefinitionArn' --output text)
+  #         aws ecs update-service \
+  #           --cluster ${{ secrets.PROJECT_NAME }}-cluster \
+  #           --service ${{ secrets.PROJECT_NAME }}-frontend-service \
+  #           --task-definition $TASK_DEFINITION \
+  #           --force-new-deployment \
+  #           --platform-version "1.4.0" \
+  #           --enable-execute-command \
+  #           --deployment-configuration '{
+  #             "deploymentCircuitBreaker": {
+  #               "enable": true,
+  #               "rollback": true
+  #             },
+  #             "maximumPercent": 200,
+  #             "minimumHealthyPercent": 50
+  #           }' \
+  #           --network-configuration '{
+  #             "awsvpcConfiguration": {
+  #               "subnets": ["'$PRIVATE_SUBNET_1'", "'$PRIVATE_SUBNET_2'"],
+  #               "securityGroups": ["'$ECS_TASKS_SG'"],
+  #               "assignPublicIp": "DISABLED"
+  #             }
+  #           }'
+
+  #     - name: Wait for frontend service to be stable
+  #       run: |
+  #         echo "Waiting for frontend service to be stable..."
+  #         aws ecs wait services-stable \
+  #           --cluster ${{ secrets.PROJECT_NAME }}-cluster \
+  #           --services ${{ secrets.PROJECT_NAME }}-frontend-service
+  #         echo "Waiting additional time for container initialization..."
+  #         sleep 60
+
+  #     - name: Verify frontend deployment
+  #       run: |
+  #         HEALTH_CHECK_URL="https://front.${{ secrets.DOMAIN_NAME }}"
+  #         MAX_RETRIES=15
+  #         RETRY_INTERVAL=30
+  #         for i in $(seq 1 $MAX_RETRIES); do
+  #           echo "Attempt $i: Checking $HEALTH_CHECK_URL"
+  #           HEALTH_CHECK_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "failed")
+  #           if [ "$HEALTH_CHECK_RESPONSE" = "200" ]; then
+  #             echo "Frontend health check passed!"
+  #             exit 0
+  #           else
+  #             echo "Got response code: $HEALTH_CHECK_RESPONSE"
+  #             if [ $i -lt $MAX_RETRIES ]; then
+  #               echo "Waiting $RETRY_INTERVAL seconds before next attempt..."
+  #               sleep $RETRY_INTERVAL
+  #             else
+  #               echo "Frontend health check failed after $MAX_RETRIES attempts"
+  #               exit 1
+  #             fi
+  #           fi
+  #         done
+
+  #     - name: Slack Notification
+  #       uses: 8398a7/action-slack@v3
+  #       if: always()
+  #       with:
+  #         status: ${{ job.status }}
+  #         fields: repo,message,commit,author,action,eventName,ref,workflow
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
