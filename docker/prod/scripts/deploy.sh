@@ -208,6 +208,10 @@ NEW_BACKEND_TASK_DEFINITION=$(echo "$BACKEND_TASK_DEFINITION" | jq --arg secrets
           "value": "HS256"
         },
         {
+          "name": "JWT_TTL",
+          "value": "5"
+        },
+        {
           "name": "FRONTEND_URL",
           "value": "https://front.'${DOMAIN_NAME}'"
         },

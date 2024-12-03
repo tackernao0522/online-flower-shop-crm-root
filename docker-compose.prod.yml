@@ -40,6 +40,7 @@ services:
 
       # JWT基本設定（非機密情報のみ）
       JWT_ALGO: HS256
+      JWT_TTL: 5
 
       # フロントエンドURL
       FRONTEND_URL: https://front.${DOMAIN_NAME}

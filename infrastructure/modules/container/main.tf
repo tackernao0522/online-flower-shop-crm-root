@@ -132,6 +132,7 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "AWS_USE_FIPS_ENDPOINT", value = "true" },
       { name = "ECS_ENABLE_EXECUTE_COMMAND", value = "true" },
       { name = "JWT_ALGO", value = var.jwt_algo },
+      { name = "JWT_TTL", value = "5" },
       # AWS認証情報を追加
       { name = "AWS_REGION", value = var.aws_region },
       { name = "AWS_DEFAULT_REGION", value = var.aws_region }
